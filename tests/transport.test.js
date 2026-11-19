@@ -53,11 +53,50 @@ test('unregister forgets the module', () => {
   assert.equal(a.starts, 0);
 });
 
-test('playAll without stopAll does nothing', () => {
+test('playAll while another module runs does not start hand-stopped ones', () => {
   const t = createTransport();
-  const a = fake(1, false);
-  t.register(a);
+  const a = fake(1, false), b = fake(2, true);
+  t.register(a); t.register(b);
   assert.doesNotThrow(() => t.playAll());
   assert.equal(a.starts, 0);
   assert.equal(t.isStopped(), false);
+});
+
+test('manual start then stop after stopAll is not undone by playAll', () => {
+  const t = createTransport();
+  const a = fake(1), b = fake(2);
+  t.register(a); t.register(b);
+  t.stopAll();
+  a.start(); t.manual(1);
+  a.stop(); t.manual(1);
+  t.playAll();
+  assert.ok(b.running);
+  assert.ok(!a.running);
+});
+
+test('playAll with nothing running and nothing remembered starts everything', () => {
+  const t = createTransport();
+  const a = fake(1, false), b = fake(2, false);
+  t.register(a); t.register(b);
+  t.playAll();
+  assert.ok(a.running && b.running);
+});
+
+test('anyRunning reflects module state', () => {
+  const t = createTransport();
+  const a = fake(1);
+  assert.equal(t.anyRunning(), false);
+  t.register(a);
+  assert.equal(t.anyRunning(), true);
+  a.stop();
+  assert.equal(t.anyRunning(), false);
+});
+
+test('stopAll with nothing running leaves the transport un-stopped', () => {
+  const t = createTransport();
+  t.stopAll();
+  assert.equal(t.isStopped(), false);
+  const late = fake(1);
+  t.register(late);
+  assert.ok(late.running);
 });

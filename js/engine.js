@@ -18,6 +18,13 @@ export function createEngine() {
     stopAll: () => transport.stopAll(),
     playAll: () => transport.playAll(),
     isStopped: () => transport.isStopped(),
+    anyRunning: () => transport.anyRunning(),
+    hasModules: () => modules.length > 0,
+    /** Hand-made start/stop from the UI. */
+    toggle(m) {
+      if (m.running) m.stop(); else m.start();
+      transport.manual(m.id);
+    },
     resume: () => (ctx.state === 'running' ? Promise.resolve() : ctx.resume()),
     addModule(m) {
       m.out = ctx.createGain();

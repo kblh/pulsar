@@ -131,10 +131,7 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
 
   function addPanel(m) {
     const toggle = el('button', { textContent: '[stop]' });
-    toggle.onclick = () => {
-      if (m.running) m.stop(); else m.start();
-      toggle.textContent = m.running ? '[stop]' : '[start]';
-    };
+    toggle.onclick = () => engine.toggle(m);
     const remove = el('button', { textContent: '[x]' });
     remove.onclick = () => {
       engine.removeModule(m.id);
@@ -193,15 +190,17 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
   plus.onclick = () => showMenu(menu.childElementCount === 0);
   adderEl.append(plus, menu);
 
+  // Offer [play all] whenever nothing is actually running (or the transport was stopped).
+  const showsPlay = () => engine.isStopped() || (engine.hasModules() && !engine.anyRunning());
   const global = el('button', { textContent: '[stop all]' });
   global.onclick = async () => {
     await engine.resume();
-    if (engine.isStopped()) engine.playAll(); else engine.stopAll();
+    if (showsPlay()) engine.playAll(); else engine.stopAll();
   };
   transportEl.append(global);
 
   function frame() {
-    global.textContent = engine.isStopped() ? '[play all]' : '[stop all]';
+    global.textContent = showsPlay() ? '[play all]' : '[stop all]';
     for (const { rows, module, toggle } of panels.values()) {
       toggle.textContent = module.running ? '[stop]' : '[start]';
       rows.forEach((r) => r.update(module.playhead));

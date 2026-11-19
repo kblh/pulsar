@@ -2,6 +2,7 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDroneModule } from '../js/module.js';
 import { midiToFreq } from '../js/scales.js';
+const midiFreq = midiToFreq;
 
 function makeCtx() {
   const log = { oscs: [], gains: [] };
@@ -172,4 +173,46 @@ test('degenerate pools never throw and the root stays', () => {
     assert.doesNotThrow(() => step(120));
     assert.ok(m.state.sounding().includes(36));
   }
+});
+
+const alive = (log, midiFreq) =>
+  log.oscs.filter((o) => Math.abs(o.frequency.value - midiFreq) < 1e-6 && !o.disconnected).length;
+
+test('root change to a tone that is still releasing waits instead of doubling the oscillator', () => {
+  const { m, log, step } = setup();
+  step(0.1);
+  m.setParam('rootNote', 'D2');
+  step(0.1);
+  m.setParam('rootNote', 'C2');
+  step(1);
+  assert.equal(alive(log, midiFreq(36)), 1);
+  assert.equal(log.oscs.filter((o) => Math.abs(o.frequency.value - midiFreq(36)) < 1e-6).length, 1);
+  log.oscs[0].onended();
+  step(0.1);
+  assert.equal(alive(log, midiFreq(36)), 1);
+  assert.equal(log.oscs.filter((o) => Math.abs(o.frequency.value - midiFreq(36)) < 1e-6).length, 2);
+  assert.ok(m.state.sounding().includes(36));
+});
+
+test('making an active extra the root promotes it instead of doubling it', () => {
+  const { m, log, step } = setup({ rate: 10, maxExtra: 1, pitchConfig: { mode: 'notes', notes: 'C2 G3' } });
+  let guard = 0;
+  while (!m.state.sounding().includes(55) && guard++ < 4000) step(0.5);
+  assert.ok(m.state.sounding().includes(55));
+  m.setParam('rootNote', 'G3');
+  step(1);
+  assert.equal(alive(log, midiFreq(55)), 1);
+  assert.ok(m.state.sounding().includes(55));
+  for (const g of voiceGains(log)) for (const c of g.calls) assert.ok(c[0] === 'target' || (c[0] === 'value' && c[1] === 0));
+});
+
+test('wave change crossfades to new voices instead of switching the oscillator type', () => {
+  const { m, log, step } = setup();
+  step(1);
+  m.setParam('wave', 'square');
+  assert.equal(log.oscs[0].type, 'sine');
+  assert.equal(log.oscs[0].stopped.length, 1);
+  assert.equal(log.oscs.length, 2);
+  assert.equal(log.oscs[1].type, 'square');
+  for (const g of voiceGains(log)) for (const c of g.calls) assert.ok(c[0] === 'target' || (c[0] === 'value' && c[1] === 0));
 });

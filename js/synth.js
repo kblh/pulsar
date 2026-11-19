@@ -99,8 +99,8 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade }) {
   osc.start(t);
   let released = false;
   return {
-    setWave(w) {
-      osc.type = w;
+    setPeak(p) {
+      gain.gain.setTargetAtTime(p, ctx.currentTime, fade / 4);
     },
     release(f, onDone) {
       if (released) return;

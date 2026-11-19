@@ -179,7 +179,7 @@ export function createDroneModule(overrides = {}) {
   }
 
   const active = new Map(); // extra midi -> voice (fading in or sustaining)
-  const releasing = new Set(); // midi numbers still fading out (root included)
+  const releasing = new Map(); // midi -> number of its voices still fading out (root included)
   let rootVoice = null;
   let nextChangeAt = null;
   let env = null; // { ctx, dest } from the latest tick
@@ -200,9 +200,11 @@ export function createDroneModule(overrides = {}) {
   const spawn = (midi, peak) =>
     createDroneVoice(env.ctx, env.dest, { freq: midiToFreq(midi), wave: params.wave, peak, fade: params.fade });
 
+  const isReleasing = (midi) => (releasing.get(midi) ?? 0) > 0;
+
   const release = (midi, voice) => {
-    releasing.add(midi);
-    voice.release(params.fade, () => releasing.delete(midi));
+    releasing.set(midi, (releasing.get(midi) ?? 0) + 1);
+    voice.release(params.fade, () => releasing.set(midi, releasing.get(midi) - 1));
   };
 
   const releaseExtra = (midi) => {
@@ -219,14 +221,14 @@ export function createDroneModule(overrides = {}) {
   m.tick = (ctx, dest, now) => {
     if (m.disposed || !m.running) return;
     env = { ctx, dest };
-    if (!rootVoice) rootVoice = spawn(rootMidi, ROOT_PEAK);
+    if (!rootVoice && !isReleasing(rootMidi)) rootVoice = spawn(rootMidi, ROOT_PEAK);
     if (nextChangeAt === null) {
       nextChangeAt = now + nextChangeDelay(params.rate, Math.random);
       return;
     }
     if (now < nextChangeAt) return;
     const change = pickChange(
-      { active: [...active.keys()], releasing: [...releasing] },
+      { active: [...active.keys()], releasing: [...releasing].filter(([, n]) => n > 0).map(([midi]) => midi) },
       { pool: m.pool, root: rootMidi, maxExtra: params.maxExtra },
       Math.random,
     );
@@ -261,8 +263,17 @@ export function createDroneModule(overrides = {}) {
   m.setParam = (key, value) => {
     if (key === 'wave') {
       params.wave = value;
-      if (rootVoice) rootVoice.setWave(value);
-      for (const v of active.values()) v.setWave(value);
+      if (!env || m.disposed) return;
+      // Switching osc.type in place would be an instant jump: crossfade to new voices instead.
+      if (rootVoice) {
+        const old = rootVoice;
+        rootVoice = spawn(rootMidi, ROOT_PEAK);
+        release(rootMidi, old);
+      }
+      for (const [midi, old] of [...active]) {
+        active.set(midi, spawn(midi, EXTRA_PEAK));
+        release(midi, old);
+      }
     } else if (key === 'rate') {
       const n = Number(value);
       if (Number.isFinite(n)) params.rate = clamp(Math.round(n), 1, 10);
@@ -278,11 +289,18 @@ export function createDroneModule(overrides = {}) {
       const oldVoice = rootVoice;
       params.rootNote = String(value).trim();
       rootMidi = midi;
-      releaseExtra(midi);
       rootVoice = null;
+      const promoted = active.get(midi);
+      if (promoted) {
+        // The tone already sounds as an extra: take it over rather than doubling it.
+        active.delete(midi);
+        rootVoice = promoted;
+        promoted.setPeak(ROOT_PEAK);
+      }
       if (oldVoice) {
         release(oldRoot, oldVoice);
-        if (env && m.running && !m.disposed) rootVoice = spawn(rootMidi, ROOT_PEAK);
+        // A tone still fading out is not respawned; tick() does it once it has ended.
+        if (!rootVoice && env && m.running && !m.disposed && !isReleasing(midi)) rootVoice = spawn(midi, ROOT_PEAK);
       }
     } else if (key === 'pitchConfig') {
       params.pitchConfig = value;

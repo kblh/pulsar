@@ -16,6 +16,10 @@ export function createTransport() {
       modules.delete(id);
       stoppedByUs.delete(id);
     },
+    /** A hand-made start/stop: the module is no longer ours to restart. */
+    manual(id) {
+      stoppedByUs.delete(id);
+    },
     stopAll() {
       for (const m of modules.values()) {
         if (m.running) {
@@ -23,13 +27,16 @@ export function createTransport() {
           stoppedByUs.add(m.id);
         }
       }
-      stopped = true;
+      stopped = stoppedByUs.size > 0;
     },
     playAll() {
-      for (const id of stoppedByUs) modules.get(id)?.start();
+      const anyRunning = [...modules.values()].some((m) => m.running);
+      const ids = stoppedByUs.size ? [...stoppedByUs] : anyRunning ? [] : [...modules.keys()];
+      for (const id of ids) modules.get(id)?.start();
       stoppedByUs.clear();
       stopped = false;
     },
+    anyRunning: () => [...modules.values()].some((m) => m.running),
     isStopped: () => stopped,
   };
 }
