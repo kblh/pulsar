@@ -3,6 +3,7 @@ import { clampVolume, clampPan, clampLevel } from './mix.js';
 import { SCALES } from './scales.js';
 import { DEFAULT_ENV } from './synth.js';
 import { WAVES, ROOTS } from './options.js';
+import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 
 export const NAME_MAX = 24;
 const FX_TYPES = ['delay', 'reverb'];
@@ -132,4 +133,66 @@ export function validateScene(data) {
 
   if (!effects.length && !modules.length) return { scene: null, problems: [...problems, 'scene is empty'] };
   return { scene: { version: 1, effects, modules }, problems };
+}
+
+const FACTORIES = { melodic: createMelodicModule, rhythmic: createRhythmicModule, drone: createDroneModule };
+
+function applyParams(m, params) {
+  for (const [key, value] of Object.entries(params)) {
+    if (m.type === 'rhythmic' && key === 'voices') {
+      for (const [drum, pattern] of Object.entries(value)) m.setParam(`voice:${drum}`, pattern);
+    } else {
+      m.setParam(key, value);
+    }
+  }
+}
+
+/**
+ * Replaces the current setup with a validated scene.
+ * `ui` = { clear(), addFxPanel(fx), addModulePanel(m) }; clear() must remove every module and effect.
+ * Parts that fail to build are skipped (and reported), never left half-built.
+ */
+export function applyScene(engine, scene, ui) {
+  const skipped = [];
+  ui.clear();
+  if (engine.isStopped()) engine.playAll(); // a leftover [stop all] would otherwise start the new modules stopped
+
+  const fxs = scene.effects.map((e, i) => {
+    let fx = null;
+    try {
+      fx = engine.addEffect(e.type, e.params);
+      fx.name = e.name;
+      ui.addFxPanel(fx);
+      return fx;
+    } catch {
+      if (fx) {
+        try { engine.removeEffect(fx.id); } catch { /* already gone */ }
+      }
+      skipped.push(`effect ${i + 1} (${e.type})`);
+      return null;
+    }
+  });
+
+  scene.modules.forEach((e, i) => {
+    let m = null;
+    let added = false;
+    try {
+      m = FACTORIES[e.type]();
+      applyParams(m, e.params);
+      m.name = e.name;
+      engine.addModule(m);
+      added = true;
+      engine.setVolume(m, e.volume);
+      engine.setPan(m, e.pan);
+      e.sends.forEach((s, slot) => engine.setSend(m, slot, { fx: fxs[s.fx]?.id ?? null, level: s.level }));
+      if (!e.running) engine.toggle(m);
+      ui.addModulePanel(m);
+    } catch {
+      if (added) {
+        try { engine.removeModule(m.id); } catch { /* already gone */ }
+      }
+      skipped.push(`module ${i + 1} (${e.type})`);
+    }
+  });
+  return { skipped };
 }
