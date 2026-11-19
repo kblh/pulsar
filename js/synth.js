@@ -82,3 +82,37 @@ export function playDrum(ctx, dest, { kind, time }) {
     disconnectOnEnd(noise, noise, hp, gain);
   }
 }
+
+/**
+ * A sustained oscillator whose level only ever changes by exponential ramps
+ * (setTargetAtTime) — never a jump. Starts silent and fades in.
+ */
+export function createDroneVoice(ctx, dest, { freq, wave, peak, fade }) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = wave;
+  osc.frequency.value = freq;
+  gain.gain.value = 0;
+  osc.connect(gain).connect(dest);
+  const t = ctx.currentTime;
+  gain.gain.setTargetAtTime(peak, t, fade / 4);
+  osc.start(t);
+  let released = false;
+  return {
+    setWave(w) {
+      osc.type = w;
+    },
+    release(f, onDone) {
+      if (released) return;
+      released = true;
+      const now = ctx.currentTime;
+      gain.gain.setTargetAtTime(0, now, f / 4);
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+        onDone?.();
+      };
+      osc.stop(now + f * 2);
+    },
+  };
+}

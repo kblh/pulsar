@@ -1,10 +1,11 @@
-import { buildPitchPool, midiToFreq } from './scales.js';
+import { buildPitchPool, midiToFreq, parseNote } from './scales.js';
+import { pickChange, nextChangeDelay, clampFade } from './drone.js';
 import { createTrack, advance } from './track.js';
 import { stepDuration } from './timing.js';
 import { mutationEvery } from './evolution.js';
 import { mutateMelody, randomMelody } from './melody.js';
 import { mutateRhythm, parsePattern, RHYTHM_PRESETS } from './rhythm.js';
-import { playNote, playDrum, DEFAULT_ENV } from './synth.js';
+import { playNote, playDrum, createDroneVoice, DEFAULT_ENV } from './synth.js';
 
 let nextId = 1;
 const DRUMS = ['kick', 'snare', 'hat'];
@@ -153,5 +154,142 @@ export function createRhythmicModule(overrides = {}) {
       m.state.voices[d] = mutateRhythm(m.state.voices[d], { level: p.rhythmMod, mode: p.evolution }, Math.random);
     }
   };
+  return m;
+}
+
+const ROOT_PEAK = 0.5;
+const EXTRA_PEAK = 0.3;
+const DRONE_OUT_LEVEL = 0.25;
+
+export function createDroneModule(overrides = {}) {
+  const params = {
+    wave: 'sine',
+    rootNote: 'C2',
+    pitchConfig: { mode: 'scale', root: 'C', scale: 'pentatonicMinor', octaves: 2 },
+    maxExtra: 2,
+    rate: 3,
+    fade: 4,
+    ...overrides,
+  };
+  params.fade = clampFade(params.fade);
+  let rootMidi = parseNote(params.rootNote);
+  if (rootMidi === null) {
+    params.rootNote = 'C2';
+    rootMidi = parseNote('C2');
+  }
+
+  const active = new Map(); // extra midi -> voice (fading in or sustaining)
+  const releasing = new Set(); // midi numbers still fading out (root included)
+  let rootVoice = null;
+  let nextChangeAt = null;
+  let env = null; // { ctx, dest } from the latest tick
+
+  const m = {
+    id: nextId++,
+    type: 'drone',
+    params,
+    pool: buildPitchPool(params.pitchConfig),
+    outLevel: DRONE_OUT_LEVEL,
+    out: null,
+    running: true,
+    disposed: false,
+    playhead: -1,
+    state: { sounding: () => [rootMidi, ...[...active.keys()].sort((a, b) => a - b)] },
+  };
+
+  const spawn = (midi, peak) =>
+    createDroneVoice(env.ctx, env.dest, { freq: midiToFreq(midi), wave: params.wave, peak, fade: params.fade });
+
+  const release = (midi, voice) => {
+    releasing.add(midi);
+    voice.release(params.fade, () => releasing.delete(midi));
+  };
+
+  const releaseExtra = (midi) => {
+    const v = active.get(midi);
+    if (!v) return;
+    active.delete(midi);
+    release(midi, v);
+  };
+
+  const rampOut = (target) => {
+    if (m.out) m.out.gain.setTargetAtTime(target, m.out.context.currentTime, params.fade / 4);
+  };
+
+  m.tick = (ctx, dest, now) => {
+    if (m.disposed || !m.running) return;
+    env = { ctx, dest };
+    if (!rootVoice) rootVoice = spawn(rootMidi, ROOT_PEAK);
+    if (nextChangeAt === null) {
+      nextChangeAt = now + nextChangeDelay(params.rate, Math.random);
+      return;
+    }
+    if (now < nextChangeAt) return;
+    const change = pickChange(
+      { active: [...active.keys()], releasing: [...releasing] },
+      { pool: m.pool, root: rootMidi, maxExtra: params.maxExtra },
+      Math.random,
+    );
+    if (change && 'add' in change) active.set(change.add, spawn(change.add, EXTRA_PEAK));
+    else if (change) releaseExtra(change.remove);
+    nextChangeAt = now + nextChangeDelay(params.rate, Math.random);
+  };
+
+  m.start = () => {
+    m.running = true;
+    nextChangeAt = null;
+    rampOut(m.outLevel);
+  };
+
+  m.stop = () => {
+    m.running = false;
+    m.playhead = -1;
+    rampOut(0);
+  };
+
+  m.dispose = () => {
+    if (m.disposed) return;
+    m.disposed = true;
+    m.running = false;
+    rampOut(0);
+    if (rootVoice) release(rootMidi, rootVoice);
+    for (const midi of [...active.keys()]) releaseExtra(midi);
+    const out = m.out;
+    if (out) setTimeout(() => out.disconnect(), params.fade * 2000 + 500);
+  };
+
+  m.setParam = (key, value) => {
+    if (key === 'wave') {
+      params.wave = value;
+      if (rootVoice) rootVoice.setWave(value);
+      for (const v of active.values()) v.setWave(value);
+    } else if (key === 'rate') {
+      const n = Number(value);
+      if (Number.isFinite(n)) params.rate = clamp(Math.round(n), 1, 10);
+    } else if (key === 'maxExtra') {
+      const n = Number(value);
+      if (Number.isFinite(n)) params.maxExtra = Math.max(0, Math.round(n));
+    } else if (key === 'fade') {
+      params.fade = clampFade(Number(value));
+    } else if (key === 'rootNote') {
+      const midi = parseNote(String(value).trim());
+      if (midi === null || midi === rootMidi) return;
+      const oldRoot = rootMidi;
+      const oldVoice = rootVoice;
+      params.rootNote = String(value).trim();
+      rootMidi = midi;
+      releaseExtra(midi);
+      rootVoice = null;
+      if (oldVoice) {
+        release(oldRoot, oldVoice);
+        if (env && m.running && !m.disposed) rootVoice = spawn(rootMidi, ROOT_PEAK);
+      }
+    } else if (key === 'pitchConfig') {
+      params.pitchConfig = value;
+      m.pool = buildPitchPool(value);
+      for (const midi of [...active.keys()]) if (!m.pool.includes(midi)) releaseExtra(midi);
+    }
+  };
+
   return m;
 }
