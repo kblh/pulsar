@@ -291,6 +291,8 @@ test('changing rate takes effect immediately', () => {
   const { m, step } = setup({ rate: 1, maxExtra: 2 });
   step(0.1);
   m.setParam('rate', 10);
-  step(6);
+  // At rate 10 the first change comes after 2.1-3.9 s and only an add is possible; the next one
+  // can come 2.1 s later at the earliest (and might remove the tone again), so look before that.
+  step(4);
   assert.ok(m.state.sounding().length > 1);
 });
