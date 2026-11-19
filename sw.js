@@ -1,10 +1,10 @@
-const CACHE = 'pulsar-v2';
+const CACHE = 'pulsar-v3';
 const FILES = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png',
   'js/main.js', 'js/ui.js', 'js/engine.js', 'js/clock.js', 'js/clock.worker.js',
   'js/module.js', 'js/synth.js', 'js/track.js', 'js/timing.js', 'js/evolution.js',
-  'js/melody.js', 'js/rhythm.js', 'js/scales.js', 'js/rng.js',
+  'js/melody.js', 'js/rhythm.js', 'js/scales.js', 'js/rng.js', 'js/drone.js', 'js/transport.js',
 ];
 
 self.addEventListener('install', (e) => {

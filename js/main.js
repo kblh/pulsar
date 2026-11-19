@@ -7,4 +7,5 @@ mountUi({
   engine: createEngine(),
   modulesEl: document.getElementById('modules'),
   adderEl: document.getElementById('adder'),
+  transportEl: document.getElementById('transport'),
 });

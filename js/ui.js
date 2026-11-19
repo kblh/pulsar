@@ -1,5 +1,5 @@
 import { SCALES } from './scales.js';
-import { createMelodicModule, createRhythmicModule } from './module.js';
+import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 
 const WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
 const ROOTS = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
@@ -60,11 +60,20 @@ function gridRow(name, getPattern, getPitches) {
   };
 }
 
-function melodicControls(m) {
-  const set = (k) => (v) => m.setParam(k, v);
+function pitchRows(m) {
   const cfg = () => ({ ...m.params.pitchConfig });
   const setCfg = (k) => (v) => m.setParam('pitchConfig', { ...cfg(), notes: cfg().notes ?? 'C4 E4 G4 A4', [k]: k === 'octaves' ? Number(v) : v });
   const c = m.params.pitchConfig;
+  return [
+    row('pitch', select(['scale', 'notes'], c.mode, setCfg('mode'))),
+    row('root', select(ROOTS, c.root ?? 'C', setCfg('root')), select(Object.keys(SCALES), c.scale ?? 'pentatonicMinor', setCfg('scale'))),
+    row('octaves', number(c.octaves ?? 2, 1, 4, setCfg('octaves'))),
+    row('notes', text(c.notes ?? 'C4 E4 G4 A4', setCfg('notes'))),
+  ];
+}
+
+function melodicControls(m) {
+  const set = (k) => (v) => m.setParam(k, v);
   const env = (k) => number(m.params.env[k], 0, k === 's' ? 1 : 5, (v) => {
     const n = Number(v);
     if (Number.isFinite(n)) m.params.env = { ...m.params.env, [k]: Math.max(0, n) };
@@ -74,15 +83,34 @@ function melodicControls(m) {
     row('adsr', env('a'), env('d'), env('s'), env('r')),
     row('bpm', number(m.params.bpm, 20, 300, set('bpm'))),
     row('swing', ...range(m.params.swing, 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`, set('swing'))),
-    row('pitch', select(['scale', 'notes'], c.mode, setCfg('mode'))),
-    row('root', select(ROOTS, c.root ?? 'C', setCfg('root')), select(Object.keys(SCALES), c.scale ?? 'pentatonicMinor', setCfg('scale'))),
-    row('octaves', number(c.octaves ?? 2, 1, 4, setCfg('octaves'))),
-    row('notes', text(c.notes ?? 'C4 E4 G4 A4', setCfg('notes'))),
+    ...pitchRows(m),
     row('rhythm', text(m.params.rhythm, set('rhythm'))),
     row('randomize', ...range(m.params.randomize, 1, 10, 1, String, set('randomize'))),
     row('rhythm mod', ...range(m.params.rhythmMod, 1, 10, 1, String, set('rhythmMod'))),
     row('evolution', select(['drift', 'walk'], m.params.evolution, set('evolution'))),
   ];
+}
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+const midiName = (n) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
+
+function droneControls(m) {
+  const set = (k) => (v) => m.setParam(k, v);
+  return [
+    row('osc', select(WAVES, m.params.wave, set('wave'))),
+    row('base', text(m.params.rootNote, set('rootNote'))),
+    ...pitchRows(m),
+    row('max extra', number(m.params.maxExtra, 0, 6, set('maxExtra'))),
+    row('rate', ...range(m.params.rate, 1, 10, 1, String, set('rate'))),
+    row('fade s', number(m.params.fade, 0.5, 30, set('fade'), 0.5)),
+  ];
+}
+
+/** A one-line status row for modules without a step grid. */
+function statusRow(name, getText) {
+  const value = el('span', { textContent: '' });
+  const line = el('div', { className: 'line' }, el('span', { className: 'name', textContent: name }), value);
+  return { node: line, update: () => { value.textContent = getText(); } };
 }
 
 function rhythmicControls(m) {
@@ -98,7 +126,7 @@ function rhythmicControls(m) {
   ];
 }
 
-export function mountUi({ engine, modulesEl, adderEl }) {
+export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
   const panels = new Map();
 
   function addPanel(m) {
@@ -115,7 +143,9 @@ export function mountUi({ engine, modulesEl, adderEl }) {
     };
 
     let rows;
-    if (m.type === 'melodic') {
+    if (m.type === 'drone') {
+      rows = [statusRow('now', () => m.state.sounding().map(midiName).join(' + '))];
+    } else if (m.type === 'melodic') {
       rows = [
         gridRow('rhythm', () => m.state.rhythm.current),
         gridRow('pitch', () => m.state.rhythm.current, () => m.state.melody.current),
@@ -124,7 +154,7 @@ export function mountUi({ engine, modulesEl, adderEl }) {
       rows = ['kick', 'snare', 'hat'].map((d) => gridRow(d, () => m.state.voices[d].current));
     }
     const grid = el('div', { className: 'grid' }, ...rows.map((r) => r.node));
-    const controls = m.type === 'melodic' ? melodicControls(m) : rhythmicControls(m);
+    const controls = { melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls }[m.type](m);
     const node = el(
       'section',
       { className: 'panel' },
@@ -133,7 +163,7 @@ export function mountUi({ engine, modulesEl, adderEl }) {
       grid,
     );
     modulesEl.append(node);
-    panels.set(m.id, { node, rows, module: m });
+    panels.set(m.id, { node, rows, module: m, toggle });
   }
 
   async function add(factory) {
@@ -154,15 +184,28 @@ export function mountUi({ engine, modulesEl, adderEl }) {
     };
     const b1 = el('button', { textContent: '[melodic]' });
     const b2 = el('button', { textContent: '[rhythmic]' });
+    const b3 = el('button', { textContent: '[drone]' });
     b1.onclick = choose(createMelodicModule);
     b2.onclick = choose(createRhythmicModule);
-    menu.append(' ', b1, ' ', b2);
+    b3.onclick = choose(createDroneModule);
+    menu.append(' ', b1, ' ', b2, ' ', b3);
   };
   plus.onclick = () => showMenu(menu.childElementCount === 0);
   adderEl.append(plus, menu);
 
+  const global = el('button', { textContent: '[stop all]' });
+  global.onclick = async () => {
+    await engine.resume();
+    if (engine.isStopped()) engine.playAll(); else engine.stopAll();
+  };
+  transportEl.append(global);
+
   function frame() {
-    for (const { rows, module } of panels.values()) rows.forEach((r) => r.update(module.playhead));
+    global.textContent = engine.isStopped() ? '[play all]' : '[stop all]';
+    for (const { rows, module, toggle } of panels.values()) {
+      toggle.textContent = module.running ? '[stop]' : '[start]';
+      rows.forEach((r) => r.update(module.playhead));
+    }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
