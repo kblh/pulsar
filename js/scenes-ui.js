@@ -43,7 +43,7 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl }) {
       say('nothing to save');
       return;
     }
-    const r = store.save(name, serializeScene({ modules: engine.modules, effects: engine.effects }));
+    const r = store.save(name, serializeScene({ modules: engine.modules, effects: engine.effects, stoppedByTransport: engine.stoppedByTransport }));
     if (!r.ok) {
       say(r.error);
       return;

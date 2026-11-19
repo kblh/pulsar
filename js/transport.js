@@ -36,6 +36,8 @@ export function createTransport() {
       stoppedByUs.clear();
       stopped = false;
     },
+    /** True when [stop all] (not the user) stopped this module and play-all would restart it. */
+    stoppedByUs: (id) => stoppedByUs.has(id),
     anyRunning: () => [...modules.values()].some((m) => m.running),
     isStopped: () => stopped,
   };

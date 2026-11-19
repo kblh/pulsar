@@ -23,8 +23,8 @@ export function cleanName(value, fallback) {
   return value.trim().slice(0, NAME_MAX).trim() || fallback;
 }
 
-/** Plain-data snapshot of what the user set up (not the evolved state). */
-export function serializeScene({ modules, effects }) {
+/** Plain-data snapshot of what the user set up (not the evolved state). `stoppedByTransport(m)` marks modules only [stop all] stopped. */
+export function serializeScene({ modules, effects, stoppedByTransport = () => false }) {
   const index = new Map(effects.map((fx, i) => [fx.id, i]));
   return {
     version: 1,
@@ -35,7 +35,7 @@ export function serializeScene({ modules, effects }) {
       params: clone(m.params),
       volume: m.volume ?? 1,
       pan: m.pan ?? 0,
-      running: m.running,
+      running: m.running || stoppedByTransport(m), // [stop all] is not a hand-made stop
       sends: (m.sends ?? []).map((s) => ({ fx: index.has(s.fx) ? index.get(s.fx) : null, level: s.level })),
     })),
   };

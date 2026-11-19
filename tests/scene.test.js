@@ -142,3 +142,13 @@ test('validateScene limits sends to three and remaps indexes after dropped effec
   assert.deepEqual(scene.modules[0].sends, [{ fx: null, level: 0.5 }, { fx: 0, level: 1 }, { fx: 1, level: 0.1 }]);
   assert.deepEqual(scene.modules[1].sends, [{ fx: null, level: 0.5 }, { fx: null, level: 0.3 }, { fx: null, level: 0.3 }]);
 });
+
+test('serializeScene records modules stopped by [stop all] as running', () => {
+  const { modules, effects } = sample(); // the drone has running = false
+  const byTransport = new Set([modules[2]]);
+  const scene = serializeScene({ modules, effects, stoppedByTransport: (m) => byTransport.has(m) });
+  assert.equal(scene.modules[2].running, true);
+  const byHand = serializeScene({ modules, effects, stoppedByTransport: () => false });
+  assert.equal(byHand.modules[2].running, false);
+  assert.equal(serializeScene({ modules, effects }).modules[2].running, false); // option is optional
+});

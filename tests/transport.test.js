@@ -100,3 +100,21 @@ test('stopAll with nothing running leaves the transport un-stopped', () => {
   t.register(late);
   assert.ok(late.running);
 });
+
+test('stoppedByUs tells transport stops from hand-made ones', () => {
+  const t = createTransport();
+  const mk = (id) => ({ id, running: true, start() { this.running = true; }, stop() { this.running = false; } });
+  const a = mk(1), b = mk(2), c = mk(3);
+  [a, b, c].forEach((m) => t.register(m));
+  b.stop();
+  t.manual(2); // stopped by hand
+  t.stopAll();
+  assert.equal(t.stoppedByUs(1), true);
+  assert.equal(t.stoppedByUs(2), false);
+  assert.equal(t.stoppedByUs(3), true);
+  assert.equal(t.stoppedByUs(99), false);
+  t.manual(3); // restarted/stopped by hand afterwards: no longer ours
+  assert.equal(t.stoppedByUs(3), false);
+  t.playAll();
+  assert.equal(t.stoppedByUs(1), false);
+});
