@@ -104,13 +104,21 @@ const midiName = (n) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
 
 function droneControls(m) {
   const set = (k) => (v) => m.setParam(k, v);
+  // Inputs show what the module actually accepted (it clamps or ignores bad values).
+  const synced = (make, key) => {
+    const input = make((v) => {
+      m.setParam(key, v);
+      input.value = m.params[key];
+    });
+    return input;
+  };
   return [
     row('osc', select(WAVES, m.params.wave, set('wave'))),
-    row('base', text(m.params.rootNote, set('rootNote'))),
+    row('base', synced((cb) => text(m.params.rootNote, cb), 'rootNote')),
     ...pitchRows(m),
-    row('max extra', number(m.params.maxExtra, 0, 6, set('maxExtra'))),
+    row('max extra', synced((cb) => number(m.params.maxExtra, 0, 6, cb), 'maxExtra')),
     row('rate', ...range(m.params.rate, 1, 10, 1, String, set('rate'))),
-    row('fade s', number(m.params.fade, 0.5, 30, set('fade'), 0.5)),
+    row('fade s', synced((cb) => number(m.params.fade, 0.5, 30, cb, 0.5), 'fade')),
   ];
 }
 
