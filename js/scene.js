@@ -9,6 +9,9 @@ export const NAME_MAX = 24;
 const FX_TYPES = ['delay', 'reverb'];
 const MODULE_TYPES = ['melodic', 'rhythmic', 'drone'];
 const SLOTS = 3;
+export const MAX_MODULES = 64;
+export const MAX_EFFECTS = 32;
+const MAX_PATTERN = 64;
 const DEFAULT_SEND_LEVEL = 0.3;
 const NUMBER_KEYS = { melodic: ['bpm', 'swing', 'randomize', 'rhythmMod'], rhythmic: ['bpm', 'swing', 'rhythmMod'], drone: ['rate', 'maxExtra', 'fade'] };
 
@@ -70,13 +73,13 @@ function cleanModuleParams(type, p) {
     if (pc) out.pitchConfig = pc;
   }
   if (type === 'melodic') {
-    if (typeof p.rhythm === 'string') out.rhythm = p.rhythm;
+    if (typeof p.rhythm === 'string') out.rhythm = p.rhythm.slice(0, MAX_PATTERN);
     const env = cleanEnv(p.env);
     if (env) out.env = env;
   }
   if (type === 'rhythmic' && isObj(p.voices)) {
     const voices = {};
-    for (const d of ['kick', 'snare', 'hat']) if (typeof p.voices[d] === 'string') voices[d] = p.voices[d];
+    for (const d of ['kick', 'snare', 'hat']) if (typeof p.voices[d] === 'string') voices[d] = p.voices[d].slice(0, MAX_PATTERN);
     if (Object.keys(voices).length) out.voices = voices;
   }
   if (type === 'drone' && typeof p.rootNote === 'string') out.rootNote = p.rootNote.slice(0, 8);
@@ -90,7 +93,13 @@ export function validateScene(data) {
 
   const remap = new Map(); // old effect index -> new index
   const effects = [];
+  let effectsCapped = false;
   (Array.isArray(data.effects) ? data.effects : []).forEach((e, i) => {
+    if (effects.length >= MAX_EFFECTS) {
+      if (!effectsCapped) problems.push(`only the first ${MAX_EFFECTS} effects are used`);
+      effectsCapped = true;
+      return;
+    }
     if (!isObj(e) || !FX_TYPES.includes(e.type)) {
       problems.push(`effect ${i + 1}: unknown type`);
       return;
@@ -107,7 +116,13 @@ export function validateScene(data) {
   });
 
   const modules = [];
+  let modulesCapped = false;
   (Array.isArray(data.modules) ? data.modules : []).forEach((m, i) => {
+    if (modules.length >= MAX_MODULES) {
+      if (!modulesCapped) problems.push(`only the first ${MAX_MODULES} modules are used`);
+      modulesCapped = true;
+      return;
+    }
     if (!isObj(m) || !MODULE_TYPES.includes(m.type)) {
       problems.push(`module ${i + 1}: unknown type`);
       return;

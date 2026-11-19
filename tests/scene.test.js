@@ -152,3 +152,25 @@ test('serializeScene records modules stopped by [stop all] as running', () => {
   assert.equal(byHand.modules[2].running, false);
   assert.equal(serializeScene({ modules, effects }).modules[2].running, false); // option is optional
 });
+
+test('validateScene caps modules and effects per scene and says so', () => {
+  const modules = Array.from({ length: 200 }, () => mod({ type: 'drone' }));
+  const effects = Array.from({ length: 100 }, () => ({ type: 'delay', params: {} }));
+  modules[0].sends = [{ fx: 50, level: 0.5 }, { fx: 3, level: 0.5 }];
+  const { scene, problems } = validateScene({ version: 1, effects, modules });
+  assert.equal(scene.modules.length, 64);
+  assert.equal(scene.effects.length, 32);
+  assert.equal(scene.modules[0].sends[0].fx, null); // that effect was cut
+  assert.equal(scene.modules[0].sends[1].fx, 3);
+  assert.equal(problems.filter((p) => /modules/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /effects/.test(p)).length, 1);
+});
+
+test('validateScene limits pattern string lengths', () => {
+  const { scene } = validateScene({
+    version: 1,
+    modules: [mod({ params: { rhythm: 'x'.repeat(1000) } }), mod({ type: 'rhythmic', params: { voices: { kick: '.'.repeat(1000) } } })],
+  });
+  assert.equal(scene.modules[0].params.rhythm.length, 64);
+  assert.equal(scene.modules[1].params.voices.kick.length, 64);
+});

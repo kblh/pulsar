@@ -36,9 +36,12 @@ export function uniqueName(name, taken) {
   }
 }
 
-/** Reads an exported file. Nothing here throws; unusable parts come back as `problems`. */
+/**
+ * Reads an exported file. Nothing here throws.
+ * `problems` say why scenes were left out, `skipped` counts them, `notes` mention parts dropped from scenes that were kept.
+ */
 export function parseSceneFile(text, fallbackName) {
-  const fail = (problem) => ({ entries: [], problems: [problem] });
+  const fail = (problem) => ({ entries: [], problems: [problem], skipped: 1, notes: [] });
   if (typeof text !== 'string') return fail('not a text file');
   // UTF-8 never takes fewer bytes than there are UTF-16 units, so a long string is over the limit without encoding it.
   if (text.length > MAX_FILE_BYTES || new TextEncoder().encode(text).length > MAX_FILE_BYTES) return fail('file is larger than 1 MB');
@@ -51,12 +54,15 @@ export function parseSceneFile(text, fallbackName) {
   if (!isObj(data)) return fail('not a Pulsar scene file');
 
   const problems = [];
+  const notes = [];
+  let skipped = 0;
   let items;
   if (data.pulsar === 'scenes') {
     if (!Array.isArray(data.scenes)) return fail('"scenes" is not a list');
     items = data.scenes;
     if (items.length > MAX_SCENES_PER_FILE) {
       problems.push(`only the first ${MAX_SCENES_PER_FILE} of ${items.length} scenes are used`);
+      skipped += items.length - MAX_SCENES_PER_FILE;
       items = items.slice(0, MAX_SCENES_PER_FILE);
     }
   } else if (data.pulsar === 'scene') {
@@ -72,12 +78,18 @@ export function parseSceneFile(text, fallbackName) {
   items.forEach((item, i) => {
     if (!isObj(item) || !isObj(item.scene)) {
       problems.push(`scene ${i + 1}: nothing usable in it`);
+      skipped++;
       return;
     }
     const name = cleanName(item.name, 'scene');
     const { scene, problems: why } = validateScene(item.scene);
-    if (!scene) problems.push(`${name}: ${why.join(', ')}`);
-    else entries.push({ name, scene });
+    if (!scene) {
+      problems.push(`${name}: ${why.join(', ')}`);
+      skipped++;
+    } else {
+      entries.push({ name, scene });
+      if (why.length) notes.push(`${name}: ${why.join(', ')}`);
+    }
   });
-  return { entries, problems };
+  return { entries, problems, skipped, notes };
 }

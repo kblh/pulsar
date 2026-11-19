@@ -1,5 +1,5 @@
 import { serializeScene, applyScene, cleanName } from './scene.js';
-import { sceneToFile, scenesToFile, parseSceneFile, uniqueName } from './scene-file.js';
+import { sceneToFile, scenesToFile, parseSceneFile, uniqueName, MAX_FILE_BYTES } from './scene-file.js';
 
 function el(tag, props = {}, ...children) {
   const e = Object.assign(document.createElement(tag), props);
@@ -118,8 +118,14 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
     let imported = 0;
     let skipped = 0;
     const reasons = [];
+    const notes = [];
     let storageError = null;
     for (const file of files) {
+      if (file.size > MAX_FILE_BYTES) { // refuse before reading a huge file into memory
+        skipped++;
+        reasons.push(`${file.name}: file is larger than 1 MB`);
+        continue;
+      }
       let text;
       try {
         text = await file.text();
@@ -128,9 +134,11 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
         reasons.push(`${file.name}: could not be read`);
         continue;
       }
-      const { entries, problems } = parseSceneFile(text, file.name);
-      skipped += problems.length;
+      const parsed = parseSceneFile(text, file.name);
+      const { entries, problems } = parsed;
+      skipped += parsed.skipped;
       for (const p of problems) reasons.push(`${file.name}: ${p}`);
+      for (const n of parsed.notes) notes.push(`${file.name}: ${n}`);
       for (const entry of entries) {
         if (storageError) {
           skipped++;
@@ -146,7 +154,8 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
         }
       }
     }
-    say(`imported ${imported}${skipped ? `, skipped ${skipped}: ${reasons.slice(0, 3).join('; ')}` : ''}`);
+    const dropped = notes.length ? `; parts dropped: ${notes.slice(0, 2).join('; ')}` : '';
+    say(`imported ${imported}${skipped ? `, skipped ${skipped}: ${reasons.slice(0, 3).join('; ')}` : ''}${dropped}`);
     render();
   }
 

@@ -123,3 +123,25 @@ test('uniqueName adds (2), (3)… and stays within 24 characters', () => {
   const u3 = uniqueName(long, taken);
   assert.ok(u3.length <= 24 && !taken.includes(u3), u3);
 });
+
+test('the skipped count says how many scenes were really left out', () => {
+  const many = parseSceneFile(JSON.stringify({ pulsar: 'scenes', scenes: Array.from({ length: 250 }, (_, i) => ({ name: `s${i}`, scene: oneModule })) }), 'x');
+  assert.equal(many.entries.length, 100);
+  assert.equal(many.skipped, 150);
+  const mixed = parseSceneFile(JSON.stringify({ pulsar: 'scenes', scenes: [{ name: 'ok', scene: oneModule }, { name: 'bad', scene: { version: 1, modules: [] } }, 7, null] }), 'x');
+  assert.equal(mixed.skipped, 3);
+  assert.equal(parseSceneFile('{', 'x').skipped, 1);
+  assert.equal(parseSceneFile(JSON.stringify({ pulsar: 'scene', name: 'a', scene: oneModule }), 'x').skipped, 0);
+});
+
+test('parts of a scene that validation dropped are reported as notes, not as skipped scenes', () => {
+  const partly = { version: 1, effects: [], modules: [oneModule.modules[0], { type: 'banjo' }] };
+  const r = parseSceneFile(JSON.stringify({ pulsar: 'scene', name: 'half', scene: partly }), 'x');
+  assert.equal(r.entries.length, 1);
+  assert.equal(r.entries[0].scene.modules.length, 1);
+  assert.deepEqual(r.problems, []);
+  assert.equal(r.skipped, 0);
+  assert.equal(r.notes.length, 1);
+  assert.match(r.notes[0], /^half: /);
+  assert.deepEqual(parseSceneFile(sceneToFile('ok', sampleScene()).text, 'x').notes, []);
+});
