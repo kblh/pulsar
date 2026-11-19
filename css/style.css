@@ -42,3 +42,9 @@ input[type=range] { flex: 1; accent-color: var(--accent); padding: 0; }
 #adder { margin-top: 16px; }
 #adder button { color: var(--accent); }
 .muted { color: var(--dim); }
+#scenes { margin-left: 8px; }
+#scenes button { color: var(--accent); }
+#scene-panel { margin-bottom: 16px; max-width: 480px; }
+#scene-panel .spacer { flex: 1; }
+.name-btn, .scene-name { color: var(--accent); }
+.name-btn:hover, .scene-name:hover { text-decoration: underline; }

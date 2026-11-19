@@ -1,10 +1,11 @@
-const CACHE = 'pulsar-v7';
+const CACHE = 'pulsar-v8';
 const FILES = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png',
   'js/main.js', 'js/ui.js', 'js/engine.js', 'js/clock.js', 'js/clock.worker.js',
   'js/module.js', 'js/synth.js', 'js/track.js', 'js/timing.js', 'js/evolution.js',
   'js/melody.js', 'js/rhythm.js', 'js/scales.js', 'js/rng.js', 'js/drone.js', 'js/transport.js', 'js/mix.js', 'js/fx.js', 'js/sends.js',
+  'js/options.js', 'js/scene.js', 'js/scene-store.js', 'js/scenes-ui.js',
 ];
 
 self.addEventListener('install', (e) => {

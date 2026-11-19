@@ -1,5 +1,7 @@
 import { SCALES } from './scales.js';
 import { WAVES, ROOTS } from './options.js';
+import { cleanName, NAME_MAX } from './scene.js';
+import { mountScenes } from './scenes-ui.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 
 
@@ -98,6 +100,36 @@ function mixRows(engine, m) {
   ];
 }
 
+/** The panel title's name: click to edit, Enter or blur keeps it, Esc cancels, empty falls back to the type. */
+function nameEditor(obj) {
+  const node = el('span');
+  const show = () => {
+    const b = el('button', { textContent: obj.name, className: 'name-btn', title: 'click to rename' });
+    b.onclick = edit;
+    node.replaceChildren(b);
+  };
+  function edit() {
+    const input = el('input', { type: 'text', value: obj.name, spellcheck: false, maxLength: NAME_MAX });
+    let done = false;
+    const finish = (commit) => {
+      if (done) return;
+      done = true;
+      if (commit) obj.name = cleanName(input.value, obj.type);
+      show();
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') finish(true);
+      else if (e.key === 'Escape') finish(false);
+    };
+    input.onblur = () => finish(true);
+    node.replaceChildren(input);
+    input.focus();
+    input.select();
+  }
+  show();
+  return node;
+}
+
 const pct = (v) => `${Math.round(v * 100)}%`;
 
 /** One send slot: a target select (rebuilt by fill() when effects come and go) and a level slider. */
@@ -106,7 +138,7 @@ function sendRow(engine, m, slot) {
   const fill = () => {
     sel.replaceChildren(
       el('option', { value: '', textContent: '—' }),
-      ...engine.effects.map((fx) => el('option', { value: fx.id, textContent: `${fx.id} ${fx.type}` })),
+      ...engine.effects.map((fx) => el('option', { value: fx.id, textContent: `${fx.id} ${fx.name}` })),
     );
     sel.value = m.sends[slot].fx ?? '';
   };
@@ -178,20 +210,32 @@ function rhythmicControls(m) {
   ];
 }
 
-export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
+export function mountUi({ engine, modulesEl, adderEl, transportEl, scenesEl, scenePanelEl, store }) {
   const panels = new Map();
+  const fxNodes = new Map(); // effect id -> panel node
   const sendFills = new Map(); // module id -> fill functions of its send selects
   let effectsSig = '';
+
+  function removeFxPanel(id) {
+    engine.removeEffect(id);
+    fxNodes.get(id)?.remove();
+    fxNodes.delete(id);
+  }
+
+  function removeModulePanel(id) {
+    engine.removeModule(id);
+    sendFills.delete(id);
+    panels.get(id)?.node.remove();
+    panels.delete(id);
+  }
 
   function addFxPanel(fx) {
     const remove = el('button', { textContent: '[x]' });
     const node = el('section', { className: 'panel' },
-      el('h2', {}, `${fx.id} ${fx.type}`, el('span', { className: 'spacer' }), remove),
+      el('h2', {}, `${fx.id} `, nameEditor(fx), el('span', { className: 'spacer' }), remove),
       ...fxControls(engine, fx));
-    remove.onclick = () => {
-      engine.removeEffect(fx.id);
-      node.remove();
-    };
+    remove.onclick = () => removeFxPanel(fx.id);
+    fxNodes.set(fx.id, node);
     modulesEl.append(node);
   }
 
@@ -199,12 +243,7 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
     const toggle = el('button', { textContent: '[stop]' });
     toggle.onclick = () => engine.toggle(m);
     const remove = el('button', { textContent: '[x]' });
-    remove.onclick = () => {
-      engine.removeModule(m.id);
-      sendFills.delete(m.id);
-      panels.get(m.id).node.remove();
-      panels.delete(m.id);
-    };
+    remove.onclick = () => removeModulePanel(m.id);
 
     let rows;
     if (m.type === 'drone') {
@@ -232,7 +271,7 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
     const node = el(
       'section',
       { className: 'panel' },
-      el('h2', {}, `#${m.id} ${m.type}`, el('span', { className: 'spacer' }), toggle, remove),
+      el('h2', {}, `#${m.id} `, nameEditor(m), el('span', { className: 'spacer' }), toggle, remove),
       ...controls,
       grid,
     );
@@ -287,7 +326,7 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
 
   function frame() {
     global.textContent = showsPlay() ? '[play all]' : '[stop all]';
-    const sig = engine.effects.map((fx) => fx.id).join();
+    const sig = engine.effects.map((fx) => `${fx.id}:${fx.name}`).join();
     if (sig !== effectsSig) {
       effectsSig = sig;
       for (const fills of sendFills.values()) fills.forEach((f) => f());
@@ -299,4 +338,16 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+
+  if (scenesEl && scenePanelEl && store) {
+    const sceneUi = {
+      clear() {
+        for (const m of [...engine.modules]) removeModulePanel(m.id);
+        for (const fx of [...engine.effects]) removeFxPanel(fx.id);
+      },
+      addFxPanel,
+      addModulePanel: addPanel,
+    };
+    mountScenes({ engine, store, sceneUi, barEl: scenesEl, panelEl: scenePanelEl });
+  }
 }
