@@ -38,7 +38,7 @@ test('times strictly increase across calls', () => {
 
 test('live bpm change only affects later steps, no repeats', () => {
   const t = createTrack(0);
-  const ev = [...advance(t, 0, 120, 0), ...advance(t, 0.2, 60, 0), ...advance(t, 0.4, 60, 0)];
+  const ev = [...advance(t, 0, 120, 0), ...advance(t, 0.1, 60, 0), ...advance(t, 0.35, 60, 0)];
   assert.equal(ev.length, 3);
   assert.ok(Math.abs(ev[2].time - ev[1].time - 0.25) < 1e-9);
 });
@@ -55,9 +55,26 @@ test('extreme bpm gives finite, increasing times', () => {
 });
 
 test('swing 1 delays odd steps by half a step', () => {
-  const ev = advance(createTrack(0), 0.1, 120, 1);
+  const ev = advance(createTrack(0), 0, 240, 1);
   assert.equal(ev.length, 2);
-  assert.ok(Math.abs(ev[1].time - (0.175 + 0.0625)) < 1e-9);
+  assert.ok(Math.abs(ev[1].time - (0.1125 + 0.03125)) < 1e-9);
+});
+
+test('a short stall (under MAX_LAG) never schedules past-dated notes', () => {
+  for (const [bpm, lag] of [[300, 0.5], [120, 0.4], [240, 0.3]]) {
+    const t = createTrack(0);
+    advance(t, 0, bpm, 0);
+    const now = lag;
+    const ev = advance(t, now, bpm, 0);
+    assert.ok(ev.every((e) => e.time >= now), `bpm ${bpm} lag ${lag}`);
+  }
+});
+
+test('skipped steps still advance stepIndex', () => {
+  const t = createTrack(0);
+  advance(t, 0, 120, 0);
+  advance(t, 0.4, 120, 0);
+  assert.ok(t.stepIndex > 1);
 });
 
 test('stepIndex wraps after 16 steps', () => {

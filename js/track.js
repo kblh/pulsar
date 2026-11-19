@@ -13,10 +13,9 @@ export function advance(track, now, bpm, swing) {
   if (track.nextTime < now - MAX_LAG) track.nextTime = now + RESYNC_OFFSET;
   const events = [];
   while (track.nextTime <= now + LOOKAHEAD) {
-    events.push({
-      time: track.nextTime + swingDelay(track.stepIndex, swing, bpm),
-      stepIndex: track.stepIndex,
-    });
+    const time = track.nextTime + swingDelay(track.stepIndex, swing, bpm);
+    // Steps that already slipped into the past (a short stall) are skipped, not played stacked.
+    if (time >= now) events.push({ time, stepIndex: track.stepIndex });
     track.nextTime += stepDuration(bpm);
     track.stepIndex = (track.stepIndex + 1) % STEPS_PER_BAR;
   }

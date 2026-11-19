@@ -47,3 +47,25 @@ test('input state is not mutated', () => {
   mutateRhythm({ current: p, base: p }, { level: 10, mode: 'walk' }, mulberry32(1));
   assert.equal(JSON.stringify(p), snap);
 });
+
+test('walk keeps hit density near the starting density', () => {
+  for (const preset of ['sparse', 'dense', 'fourOnFloor']) {
+    const p = parsePattern(RHYTHM_PRESETS[preset]);
+    const anchor = p.filter(Boolean).length;
+    let s = { current: p, base: [...p] };
+    const rng = mulberry32(11);
+    for (let i = 0; i < 1000; i++) {
+      s = mutateRhythm(s, { level: 10, mode: 'walk' }, rng);
+      const hits = s.current.filter(Boolean).length;
+      assert.ok(Math.abs(hits - anchor) <= 2, `${preset}: ${hits} vs ${anchor} at ${i}`);
+    }
+  }
+});
+
+test('walk actually changes the pattern', () => {
+  const p = parsePattern(RHYTHM_PRESETS.fourOnFloor);
+  let s = { current: p, base: [...p] };
+  const rng = mulberry32(4);
+  for (let i = 0; i < 20; i++) s = mutateRhythm(s, { level: 10, mode: 'walk' }, rng);
+  assert.notDeepEqual(s.current, p);
+});

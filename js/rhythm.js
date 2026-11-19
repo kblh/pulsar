@@ -8,6 +8,9 @@ export const RHYTHM_PRESETS = {
   dense: 'x.xxx.x.xx.xx.xx',
 };
 
+const SHIFT_CHANCE = 0.5;
+const DENSITY_BAND = 1;
+
 export function parsePattern(str) {
   const p = Array.from({ length: STEPS_PER_BAR }, (_, i) => String(str ?? '')[i] === 'x');
   if (!p.some(Boolean)) p[0] = true;
@@ -18,11 +21,46 @@ export function formatPattern(p) {
   return p.map((on) => (on ? 'x' : '.')).join('');
 }
 
-export function mutateRhythm({ current, base }, { level, mode }, rng) {
+const indices = (p, on) => p.flatMap((v, i) => (v === on ? [i] : []));
+const hitCount = (p) => p.filter(Boolean).length;
+
+/** Moves one hit to an empty neighbouring step; keeps density. */
+function shiftHit(p, rng) {
+  const hits = indices(p, true);
+  const from = hits[Math.floor(rng() * hits.length)];
+  const dir = rng() < 0.5 ? -1 : 1;
+  for (const d of [dir, -dir]) {
+    const to = (from + d + p.length) % p.length;
+    if (!p[to]) {
+      p[from] = false;
+      p[to] = true;
+      return;
+    }
+  }
+}
+
+/** Adds or removes one hit, pulled back toward `anchor` density when outside the band. */
+function flipHit(p, anchor, rng) {
+  const n = hitCount(p);
+  let add = rng() < 0.5;
+  if (n > anchor + DENSITY_BAND) add = false;
+  else if (n < anchor - DENSITY_BAND) add = true;
+  const pool = indices(p, !add);
+  if (!pool.length) return;
+  p[pool[Math.floor(rng() * pool.length)]] = add;
+}
+
+/**
+ * Mutates a rhythm by shifting hits and nudging density. `anchor` is the density the
+ * pattern started with (carried through the returned state) so `walk` cannot decay
+ * into random half-full noise.
+ */
+export function mutateRhythm({ current, base, anchor }, { level, mode }, rng) {
+  const anchored = anchor ?? hitCount(base);
   const next = [...current];
   for (let n = mutationAmount(level); n > 0; n--) {
-    const i = Math.floor(rng() * next.length);
-    next[i] = !next[i];
+    if (rng() < SHIFT_CHANCE) shiftHit(next, rng);
+    else flipHit(next, anchored, rng);
   }
   if (mode === 'drift') {
     for (let i = 0; i < next.length; i++) {
@@ -30,5 +68,9 @@ export function mutateRhythm({ current, base }, { level, mode }, rng) {
     }
   }
   if (!next.some(Boolean)) next[Math.floor(rng() * next.length)] = true;
-  return mode === 'walk' ? { current: next, base: [...next] } : { current: next, base: [...base] };
+  return {
+    current: next,
+    base: mode === 'walk' ? [...next] : [...base],
+    anchor: anchored,
+  };
 }
