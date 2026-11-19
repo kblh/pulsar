@@ -42,11 +42,12 @@ export function createRouting(ctx, master) {
 
   return {
     effects,
-    addEffect(type) {
+    addEffect(type, params) {
       const make = MAKERS[type];
       if (!make) throw new Error(`unknown effect: ${type}`);
-      const fx = make(ctx);
+      const fx = make(ctx, params);
       fx.id = `fx${++counter}`;
+      fx.name = type;
       fx.output.connect(master);
       effects.push(fx);
       return fx;

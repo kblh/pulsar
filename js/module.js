@@ -48,6 +48,7 @@ function makeModule(type, params, state, pool, onStep) {
   const m = {
     id: nextId++,
     type,
+    name: type,
     params,
     state,
     pool,
@@ -193,6 +194,7 @@ export function createDroneModule(overrides = {}) {
   const m = {
     id: nextId++,
     type: 'drone',
+    name: 'drone',
     params,
     pool: buildPitchPool(params.pitchConfig),
     outLevel: DRONE_OUT_LEVEL,

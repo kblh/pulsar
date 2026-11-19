@@ -1,8 +1,7 @@
 import { SCALES } from './scales.js';
+import { WAVES, ROOTS } from './options.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 
-const WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
-const ROOTS = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 
 function el(tag, props = {}, ...children) {
   const e = Object.assign(document.createElement(tag), props);

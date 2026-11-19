@@ -155,3 +155,11 @@ test('detach disconnects the module sends and forgets the module', (t) => {
   routing.removeEffect(fx.id);
   assert.equal(ctx.nodes.length, count);
 });
+
+test('addEffect passes params to the effect and names it after its type', (t) => {
+  const { routing } = setup(t);
+  const fx = routing.addEffect('delay', { time: 900 });
+  assert.equal(fx.params.time, 900);
+  assert.equal(fx.name, 'delay');
+  assert.equal(routing.addEffect('delay', { feedback: 7 }).params.feedback, 0.9);
+});
