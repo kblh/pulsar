@@ -1,6 +1,7 @@
 import { createClock } from './clock.js';
 import { createTransport } from './transport.js';
 import { connectMix, clampVolume, clampPan } from './mix.js';
+import { createRouting } from './sends.js';
 
 export function createEngine() {
   const ctx = new AudioContext();
@@ -10,6 +11,7 @@ export function createEngine() {
   const modules = [];
   const transport = createTransport();
   const mixes = new Map();
+  const routing = createRouting(ctx, master);
   const clock = createClock(() => {
     for (const m of modules) m.tick(ctx, m.out, ctx.currentTime);
   });
@@ -17,6 +19,11 @@ export function createEngine() {
   return {
     ctx,
     modules,
+    effects: routing.effects,
+    addEffect: routing.addEffect,
+    setFxParam: routing.setFxParam,
+    removeEffect: routing.removeEffect,
+    setSend: routing.setSend,
     stopAll: () => transport.stopAll(),
     playAll: () => transport.playAll(),
     isStopped: () => transport.isStopped(),
@@ -33,7 +40,9 @@ export function createEngine() {
       m.out.gain.value = m.outLevel ?? 0.4;
       m.volume = 1;
       m.pan = 0;
-      mixes.set(m.id, connectMix(ctx, m.out, master));
+      const mix = connectMix(ctx, m.out, master);
+      mixes.set(m.id, mix);
+      routing.attach(m, mix);
       modules.push(m);
       transport.register(m);
       if (modules.length === 1) clock.start();
@@ -56,7 +65,11 @@ export function createEngine() {
       const mix = mixes.get(id);
       mixes.delete(id);
       const delay = m.disposeDelay ? m.disposeDelay() : 0;
-      if (mix) (delay ? setTimeout(() => mix.disconnect(), delay + 100) : mix.disconnect());
+      const free = () => {
+        routing.detach(m);
+        mix?.disconnect();
+      };
+      if (delay) setTimeout(free, delay + 100); else free();
       if (!modules.length) clock.stop();
     },
   };

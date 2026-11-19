@@ -64,3 +64,43 @@ test('disconnect disconnects both nodes', () => {
   assert.equal(vol.disconnected, 1);
   assert.equal(pan.disconnected, 1);
 });
+
+import { stubCtx as richCtx } from './helpers/stub-ctx.js';
+import { clampLevel } from '../js/mix.js';
+
+test('clampLevel defaults to silence for bad input', () => {
+  assert.equal(clampLevel(2), 1);
+  assert.equal(clampLevel(-1), 0);
+  assert.equal(clampLevel(NaN), 0);
+  assert.equal(clampLevel('0.5'), 0.5);
+});
+
+test('send taps after pan, starts silent and ramps its level', () => {
+  const ctx = richCtx();
+  const mix = connectMix(ctx, { connect: (x) => x }, { name: 'master' });
+  const pan = ctx.nodes.find((n) => n.kind === 'pan');
+  const dest = { name: 'fx' };
+  const send = mix.send(dest);
+  const gain = pan.connections.at(-1);
+  assert.equal(gain.kind, 'gain');
+  assert.ok(gain.connections.includes(dest));
+  assert.deepEqual(gain.gain.calls, [['value', 0]]);
+  send.setLevel(5);
+  assert.deepEqual(gain.gain.calls.at(-1).slice(0, 2), ['target', 1]);
+  send.setLevel(NaN);
+  assert.deepEqual(gain.gain.calls.at(-1).slice(0, 2), ['target', 0]);
+  assert.equal(gain.gain.calls.filter((c) => c[0] === 'value').length, 1);
+  send.disconnect();
+  assert.equal(gain.disconnected, 1);
+});
+
+test('mix.disconnect disconnects sends too', () => {
+  const ctx = richCtx();
+  const mix = connectMix(ctx, { connect: (x) => x }, {});
+  mix.send({});
+  mix.send({});
+  const sendGains = ctx.nodes.filter((n) => n.kind === 'gain').slice(1);
+  mix.disconnect();
+  assert.equal(sendGains.length, 2);
+  for (const g of sendGains) assert.ok(g.disconnected >= 1);
+});
