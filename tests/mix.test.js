@@ -1,0 +1,66 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { clampVolume, clampPan, connectMix } from '../js/mix.js';
+
+function stubCtx() {
+  const time = { t: 1 };
+  const mk = (name) => {
+    const calls = [];
+    const param = { calls, setTargetAtTime: (...a) => calls.push(['target', ...a]), set value(v) { calls.push(['value', v]); } };
+    const node = { name, gain: param, pan: param, connections: [], disconnected: 0,
+      connect(x) { node.connections.push(x); return x; }, disconnect() { node.disconnected++; } };
+    return node;
+  };
+  return { get currentTime() { return time.t; }, createGain: () => mk('gain'), createStereoPanner: () => mk('pan') };
+}
+
+test('clamps', () => {
+  assert.equal(clampVolume(2), 1);
+  assert.equal(clampVolume(-1), 0);
+  assert.equal(clampVolume(NaN), 1);
+  assert.equal(clampVolume('0.5'), 0.5);
+  assert.equal(clampPan(5), 1);
+  assert.equal(clampPan(-5), -1);
+  assert.equal(clampPan(NaN), 0);
+});
+
+test('connectMix wires out -> volume -> pan -> destination', () => {
+  const ctx = stubCtx();
+  const out = { connections: [], connect(x) { out.connections.push(x); return x; } };
+  const dest = { name: 'master' };
+  const mix = connectMix(ctx, out, dest);
+  const vol = out.connections[0];
+  assert.equal(vol.name, 'gain');
+  const pan = vol.connections[0];
+  assert.equal(pan.name, 'pan');
+  assert.equal(pan.connections[0], dest);
+  assert.ok(mix);
+});
+
+test('setVolume and setPan clamp and ramp instead of jumping', () => {
+  const ctx = stubCtx();
+  const out = { connect: (x) => x };
+  let vol, pan;
+  const dest = {};
+  const origGain = ctx.createGain, origPan = ctx.createStereoPanner;
+  ctx.createGain = () => (vol = origGain());
+  ctx.createStereoPanner = () => (pan = origPan());
+  const mix = connectMix(ctx, out, dest);
+  mix.setVolume(5);
+  mix.setPan(-9);
+  assert.deepEqual(vol.gain.calls.at(-1).slice(0, 2), ['target', 1]);
+  assert.deepEqual(pan.pan.calls.at(-1).slice(0, 2), ['target', -1]);
+  for (const c of [...vol.gain.calls, ...pan.pan.calls]) assert.ok(c[0] === 'target' || c[0] === 'value');
+});
+
+test('disconnect disconnects both nodes', () => {
+  const ctx = stubCtx();
+  let vol, pan;
+  const og = ctx.createGain, op = ctx.createStereoPanner;
+  ctx.createGain = () => (vol = og());
+  ctx.createStereoPanner = () => (pan = op());
+  const mix = connectMix(ctx, { connect: (x) => x }, {});
+  mix.disconnect();
+  assert.equal(vol.disconnected, 1);
+  assert.equal(pan.disconnected, 1);
+});

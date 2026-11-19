@@ -102,6 +102,16 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade }) {
     setPeak(p) {
       gain.gain.setTargetAtTime(p, ctx.currentTime, fade / 4);
     },
+    /** Stops immediately; only for voices that are already silent. */
+    kill() {
+      if (released) return;
+      released = true;
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+      };
+      osc.stop(ctx.currentTime);
+    },
     release(f, onDone) {
       if (released) return;
       released = true;

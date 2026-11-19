@@ -216,3 +216,81 @@ test('wave change crossfades to new voices instead of switching the oscillator t
   assert.equal(log.oscs[1].type, 'square');
   for (const g of voiceGains(log)) for (const c of g.calls) assert.ok(c[0] === 'target' || (c[0] === 'value' && c[1] === 0));
 });
+
+test('maxExtra is clamped to 0-6 at creation and in setParam', () => {
+  assert.equal(createDroneModule({ maxExtra: 'x' }).params.maxExtra, 2);
+  assert.equal(createDroneModule({ maxExtra: 40 }).params.maxExtra, 6);
+  const m = createDroneModule();
+  m.setParam('maxExtra', 99);
+  assert.equal(m.params.maxExtra, 6);
+  m.setParam('maxExtra', -3);
+  assert.equal(m.params.maxExtra, 0);
+});
+
+test('root note is limited to C0..C6', () => {
+  assert.equal(createDroneModule({ rootNote: 'D-9' }).params.rootNote, 'C2');
+  const m = createDroneModule();
+  m.setParam('rootNote', 'C9');
+  assert.equal(m.params.rootNote, 'C2');
+  m.setParam('rootNote', 'C7');
+  assert.equal(m.params.rootNote, 'C2');
+  m.setParam('rootNote', 'C6');
+  assert.equal(m.params.rootNote, 'C6');
+  m.setParam('rootNote', 'C0');
+  assert.equal(m.params.rootNote, 'C0');
+});
+
+test('state.releasing() lists tones that are fading out', () => {
+  const { m, step } = setup({ rate: 10, maxExtra: 1, pitchConfig: { mode: 'notes', notes: 'C2 G3' } });
+  let guard = 0;
+  while (!m.state.sounding().includes(55) && guard++ < 4000) step(0.5);
+  assert.deepEqual(m.state.releasing(), []);
+  guard = 0;
+  while (m.state.sounding().includes(55) && guard++ < 4000) step(0.5);
+  assert.deepEqual(m.state.releasing(), [55]);
+});
+
+test('a stopped drone shuts its oscillators down after the fade and restarts cleanly', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { m, log, step } = setup({ fade: 4 });
+    step(1);
+    m.stop();
+    mock.timers.tick(7000);
+    assert.equal(log.oscs[0].stopped.length, 0);
+    mock.timers.tick(1500);
+    assert.ok(log.oscs[0].stopped.length >= 1);
+    log.oscs[0].onended();
+    m.start();
+    step(0.1);
+    assert.equal(log.oscs.length, 2);
+    assert.deepEqual(m.state.sounding(), [36]);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('starting again before the shutdown timer keeps the same voices', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { m, log, step } = setup({ fade: 4 });
+    step(1);
+    m.stop();
+    mock.timers.tick(3000);
+    m.start();
+    mock.timers.tick(20000);
+    step(0.1);
+    assert.equal(log.oscs.length, 1);
+    assert.equal(log.oscs[0].stopped.length, 0);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('changing rate takes effect immediately', () => {
+  const { m, step } = setup({ rate: 1, maxExtra: 2 });
+  step(0.1);
+  m.setParam('rate', 10);
+  step(6);
+  assert.ok(m.state.sounding().length > 1);
+});

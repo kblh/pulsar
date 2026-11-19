@@ -157,6 +157,10 @@ export function createRhythmicModule(overrides = {}) {
   return m;
 }
 
+const MAX_EXTRA_LIMIT = 6;
+const ROOT_MIN = 12; // C0
+const ROOT_MAX = 84; // C6
+const validRoot = (midi) => midi !== null && midi >= ROOT_MIN && midi <= ROOT_MAX;
 const ROOT_PEAK = 0.5;
 const EXTRA_PEAK = 0.3;
 const DRONE_OUT_LEVEL = 0.25;
@@ -172,8 +176,10 @@ export function createDroneModule(overrides = {}) {
     ...overrides,
   };
   params.fade = clampFade(params.fade);
+  const extra = Number(params.maxExtra);
+  params.maxExtra = Number.isFinite(extra) ? clamp(Math.round(extra), 0, MAX_EXTRA_LIMIT) : 2;
   let rootMidi = parseNote(params.rootNote);
-  if (rootMidi === null) {
+  if (!validRoot(rootMidi)) {
     params.rootNote = 'C2';
     rootMidi = parseNote('C2');
   }
@@ -194,7 +200,10 @@ export function createDroneModule(overrides = {}) {
     running: true,
     disposed: false,
     playhead: -1,
-    state: { sounding: () => [rootMidi, ...[...active.keys()].sort((a, b) => a - b)] },
+    state: {
+      sounding: () => [rootMidi, ...[...active.keys()].sort((a, b) => a - b)],
+      releasing: () => [...releasing].filter(([, n]) => n > 0).map(([midi]) => midi).sort((a, b) => a - b),
+    },
   };
 
   const spawn = (midi, peak) =>
@@ -237,7 +246,14 @@ export function createDroneModule(overrides = {}) {
     nextChangeAt = now + nextChangeDelay(params.rate, Math.random);
   };
 
+  let shutdownTimer = null;
+  const clearShutdown = () => {
+    if (shutdownTimer !== null) clearTimeout(shutdownTimer);
+    shutdownTimer = null;
+  };
+
   m.start = () => {
+    clearShutdown();
     m.running = true;
     nextChangeAt = null;
     rampOut(m.outLevel);
@@ -247,18 +263,31 @@ export function createDroneModule(overrides = {}) {
     m.running = false;
     m.playhead = -1;
     rampOut(0);
+    clearShutdown();
+    // Once the output is silent, free the oscillators; start() brings the base back.
+    shutdownTimer = setTimeout(() => {
+      shutdownTimer = null;
+      if (m.running || m.disposed) return;
+      if (rootVoice) rootVoice.kill();
+      for (const v of active.values()) v.kill();
+      rootVoice = null;
+      active.clear();
+      nextChangeAt = null;
+    }, params.fade * 2000 + 250);
   };
 
   m.dispose = () => {
     if (m.disposed) return;
     m.disposed = true;
     m.running = false;
+    clearShutdown();
     rampOut(0);
     if (rootVoice) release(rootMidi, rootVoice);
     for (const midi of [...active.keys()]) releaseExtra(midi);
     const out = m.out;
-    if (out) setTimeout(() => out.disconnect(), params.fade * 2000 + 500);
+    if (out) setTimeout(() => out.disconnect(), m.disposeDelay());
   };
+  m.disposeDelay = () => params.fade * 2000 + 500;
 
   m.setParam = (key, value) => {
     if (key === 'wave') {
@@ -276,15 +305,18 @@ export function createDroneModule(overrides = {}) {
       }
     } else if (key === 'rate') {
       const n = Number(value);
-      if (Number.isFinite(n)) params.rate = clamp(Math.round(n), 1, 10);
+      if (Number.isFinite(n)) {
+        params.rate = clamp(Math.round(n), 1, 10);
+        nextChangeAt = null; // reschedule from the new rate on the next tick
+      }
     } else if (key === 'maxExtra') {
       const n = Number(value);
-      if (Number.isFinite(n)) params.maxExtra = Math.max(0, Math.round(n));
+      if (Number.isFinite(n)) params.maxExtra = clamp(Math.round(n), 0, MAX_EXTRA_LIMIT);
     } else if (key === 'fade') {
       params.fade = clampFade(Number(value));
     } else if (key === 'rootNote') {
       const midi = parseNote(String(value).trim());
-      if (midi === null || midi === rootMidi) return;
+      if (!validRoot(midi) || midi === rootMidi) return;
       const oldRoot = rootMidi;
       const oldVoice = rootVoice;
       params.rootNote = String(value).trim();

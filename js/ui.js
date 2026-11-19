@@ -91,6 +91,14 @@ function melodicControls(m) {
   ];
 }
 
+function mixRows(engine, m) {
+  const panText = (v) => (Math.abs(v) < 0.05 ? 'C' : `${v < 0 ? 'L' : 'R'}${Math.round(Math.abs(v) * 100)}`);
+  return [
+    row('volume', ...range(m.volume ?? 1, 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`, (v) => engine.setVolume(m, v))),
+    row('pan', ...range(m.pan ?? 0, -1, 1, 0.05, panText, (v) => engine.setPan(m, v))),
+  ];
+}
+
 const NOTE_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 const midiName = (n) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
 
@@ -141,7 +149,11 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
 
     let rows;
     if (m.type === 'drone') {
-      rows = [statusRow('now', () => m.state.sounding().map(midiName).join(' + '))];
+      rows = [
+        statusRow('now', () =>
+          [...m.state.sounding().map(midiName), ...m.state.releasing().map((n) => `${midiName(n)}↓`)].join(' + '),
+        ),
+      ];
     } else if (m.type === 'melodic') {
       rows = [
         gridRow('rhythm', () => m.state.rhythm.current),
@@ -151,7 +163,10 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
       rows = ['kick', 'snare', 'hat'].map((d) => gridRow(d, () => m.state.voices[d].current));
     }
     const grid = el('div', { className: 'grid' }, ...rows.map((r) => r.node));
-    const controls = { melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls }[m.type](m);
+    const controls = [
+      ...{ melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls }[m.type](m),
+      ...mixRows(engine, m),
+    ];
     const node = el(
       'section',
       { className: 'panel' },
