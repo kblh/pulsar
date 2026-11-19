@@ -99,6 +99,43 @@ function mixRows(engine, m) {
   ];
 }
 
+const pct = (v) => `${Math.round(v * 100)}%`;
+
+/** One send slot: a target select (rebuilt by fill() when effects come and go) and a level slider. */
+function sendRow(engine, m, slot) {
+  const sel = el('select');
+  const fill = () => {
+    sel.replaceChildren(
+      el('option', { value: '', textContent: '—' }),
+      ...engine.effects.map((fx) => el('option', { value: fx.id, textContent: `${fx.id} ${fx.type}` })),
+    );
+    sel.value = m.sends[slot].fx ?? '';
+  };
+  sel.onchange = () => {
+    engine.setSend(m, slot, { fx: sel.value || null });
+    sel.value = m.sends[slot].fx ?? '';
+  };
+  fill();
+  const level = range(m.sends[slot].level, 0, 1, 0.01, pct, (v) => engine.setSend(m, slot, { level: v }));
+  return { row: row(`send ${slot + 1}`, sel, ...level), fill };
+}
+
+const FX_FIELDS = {
+  delay: [['time', 10, 2000, 10], ['feedback', 0, 0.9, 0.05], ['tone', 200, 12000, 100], ['return', 0, 1, 0.05]],
+  reverb: [['decay', 0.3, 10, 0.1], ['damping', 0, 1, 0.05], ['return', 0, 1, 0.05]],
+};
+
+function fxControls(engine, fx) {
+  return FX_FIELDS[fx.type].map(([key, min, max, step]) => {
+    // The input shows the value the effect actually accepted.
+    const input = number(fx.params[key], min, max, (v) => {
+      engine.setFxParam(fx, key, v);
+      input.value = fx.params[key];
+    }, step);
+    return row(key, input);
+  });
+}
+
 const NOTE_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 const midiName = (n) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
 
@@ -144,6 +181,20 @@ function rhythmicControls(m) {
 
 export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
   const panels = new Map();
+  const sendFills = new Map(); // module id -> fill functions of its send selects
+  let effectsSig = '';
+
+  function addFxPanel(fx) {
+    const remove = el('button', { textContent: '[x]' });
+    const node = el('section', { className: 'panel' },
+      el('h2', {}, `${fx.id} ${fx.type}`, el('span', { className: 'spacer' }), remove),
+      ...fxControls(engine, fx));
+    remove.onclick = () => {
+      engine.removeEffect(fx.id);
+      node.remove();
+    };
+    modulesEl.append(node);
+  }
 
   function addPanel(m) {
     const toggle = el('button', { textContent: '[stop]' });
@@ -151,6 +202,7 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
     const remove = el('button', { textContent: '[x]' });
     remove.onclick = () => {
       engine.removeModule(m.id);
+      sendFills.delete(m.id);
       panels.get(m.id).node.remove();
       panels.delete(m.id);
     };
@@ -171,9 +223,12 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
       rows = ['kick', 'snare', 'hat'].map((d) => gridRow(d, () => m.state.voices[d].current));
     }
     const grid = el('div', { className: 'grid' }, ...rows.map((r) => r.node));
+    const sends = [0, 1, 2].map((slot) => sendRow(engine, m, slot));
+    sendFills.set(m.id, sends.map((x) => x.fill));
     const controls = [
       ...{ melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls }[m.type](m),
       ...mixRows(engine, m),
+      ...sends.map((x) => x.row),
     ];
     const node = el(
       'section',
@@ -193,6 +248,11 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
     addPanel(m);
   }
 
+  async function addEffect(type) {
+    await engine.resume();
+    addFxPanel(engine.addEffect(type));
+  }
+
   const menu = el('span', { className: 'muted' });
   const plus = el('button', { textContent: '[+]' });
   const showMenu = (open) => {
@@ -208,7 +268,11 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
     b1.onclick = choose(createMelodicModule);
     b2.onclick = choose(createRhythmicModule);
     b3.onclick = choose(createDroneModule);
-    menu.append(' ', b1, ' ', b2, ' ', b3);
+    const b4 = el('button', { textContent: '[reverb]' });
+    const b5 = el('button', { textContent: '[delay]' });
+    b4.onclick = () => { showMenu(false); addEffect('reverb'); };
+    b5.onclick = () => { showMenu(false); addEffect('delay'); };
+    menu.append(' ', b1, ' ', b2, ' ', b3, ' ', b4, ' ', b5);
   };
   plus.onclick = () => showMenu(menu.childElementCount === 0);
   adderEl.append(plus, menu);
@@ -224,6 +288,11 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl }) {
 
   function frame() {
     global.textContent = showsPlay() ? '[play all]' : '[stop all]';
+    const sig = engine.effects.map((fx) => fx.id).join();
+    if (sig !== effectsSig) {
+      effectsSig = sig;
+      for (const fills of sendFills.values()) fills.forEach((f) => f());
+    }
     for (const { rows, module, toggle } of panels.values()) {
       toggle.textContent = module.running ? '[stop]' : '[start]';
       rows.forEach((r) => r.update(module.playhead));
