@@ -22,7 +22,7 @@ function stubCtx() {
     get currentTime() { return time.t; },
     createGain: () => mk('gain', { gain: param() }),
     createDelay: (max) => mk('delay', { maxDelayTime: max, delayTime: param() }),
-    createBiquadFilter: () => mk('biquad', { frequency: param() }),
+    createBiquadFilter: () => mk('biquad', { frequency: param(), Q: param() }),
     createConvolver: () => mk('convolver'),
     createBuffer: (ch, len, sr) => {
       const data = Array.from({ length: ch }, () => new Float32Array(len));
@@ -167,5 +167,33 @@ test('dispose ramps return to 0, disconnect disconnects everything', (t) => {
     for (const n of ctx.nodes) assert.ok(n.disconnected >= 1, `${fx.type} ${n.kind} not disconnected`);
     assert.ok(fx.input.disconnected >= 1);
     assert.equal(ctx.buffers.length, fx.type === 'reverb' ? 1 : 0);
+  }
+});
+
+// Peak magnitude of the Web Audio lowpass (RBJ cookbook; Q is in dB for lowpass).
+function lowpassPeak(fc, qDb, sr = 48000) {
+  const w0 = (2 * Math.PI * fc) / sr;
+  const alpha = Math.sin(w0) / (2 * 10 ** (qDb / 20));
+  const c = Math.cos(w0);
+  const [b0, b1, b2] = [(1 - c) / 2, 1 - c, (1 - c) / 2];
+  const [a0, a1, a2] = [1 + alpha, -2 * c, 1 - alpha];
+  let peak = 0;
+  for (let i = 1; i < 4000; i++) {
+    const w = (Math.PI * i) / 4000;
+    const re = (z) => Math.cos(z * w);
+    const im = (z) => -Math.sin(z * w);
+    const nr = b0 + b1 * re(1) + b2 * re(2), ni = b1 * im(1) + b2 * im(2);
+    const dr = a0 + a1 * re(1) + a2 * re(2), di = a1 * im(1) + a2 * im(2);
+    peak = Math.max(peak, Math.hypot(nr, ni) / Math.hypot(dr, di));
+  }
+  return peak;
+}
+
+test('delay lowpass in the feedback loop has no resonance peak that makes the loop unstable', () => {
+  for (const tone of [200, 4000, 12000]) {
+    const ctx = stubCtx();
+    const fx = createDelay(ctx, { tone, feedback: 0.9 });
+    const q = ctx.nodes.find((n) => n.kind === 'biquad').Q.calls.find((c) => c[0] === 'value')?.[1] ?? 1;
+    assert.ok(fx.params.feedback * lowpassPeak(tone, q) < 1, `tone ${tone}: loop gain ${fx.params.feedback * lowpassPeak(tone, q)}`);
   }
 });

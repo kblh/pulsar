@@ -104,3 +104,20 @@ test('mix.disconnect disconnects sends too', () => {
   assert.equal(sendGains.length, 2);
   for (const g of sendGains) assert.ok(g.disconnected >= 1);
 });
+
+test('disconnecting a send twice is safe (real Web Audio throws on a second disconnect(dest))', () => {
+  const ctx = richCtx();
+  const mix = connectMix(ctx, { connect: (x) => x }, {});
+  const pan = ctx.nodes.find((n) => n.kind === 'pan');
+  const connected = new Set();
+  pan.connect = (x) => { connected.add(x); return x; };
+  pan.disconnect = (x) => {
+    if (x && !connected.delete(x)) throw new Error('InvalidAccessError');
+  };
+  const send = mix.send({});
+  send.disconnect();
+  assert.doesNotThrow(() => send.disconnect());
+  const again = mix.send({});
+  again.disconnect();
+  assert.doesNotThrow(() => mix.disconnect());
+});

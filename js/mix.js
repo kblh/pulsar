@@ -36,7 +36,7 @@ export function connectMix(ctx, out, destination) {
       const s = {
         setLevel: (v) => gain.gain.setTargetAtTime(clampLevel(v), ctx.currentTime, RAMP),
         disconnect() {
-          sends.delete(s);
+          if (!sends.delete(s)) return; // already gone; a second disconnect(dest) throws in real Web Audio
           pan.disconnect(gain);
           gain.disconnect();
         },

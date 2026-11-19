@@ -58,6 +58,7 @@ export function createDelay(ctx, params) {
   delay.delayTime.value = p.time / 1000;
   const tone = ctx.createBiquadFilter();
   tone.type = 'lowpass';
+  tone.Q.value = -3; // dB: the default (+1 dB) peaks above 1 and, inside the feedback loop, makes it unstable
   tone.frequency.value = p.tone;
   const feedback = ctx.createGain();
   feedback.gain.value = p.feedback;
