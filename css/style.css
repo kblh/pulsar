@@ -35,7 +35,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); padding: 0; }
 .val { min-width: 3ch; text-align: right; }
 .grid { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 8px; }
 .grid .line { white-space: pre; letter-spacing: 0.15em; }
-.grid .name { color: var(--dim); display: inline-block; width: 6ch; letter-spacing: 0; }
+.grid .name { color: var(--dim); display: inline-block; width: 8ch; letter-spacing: 0; }
 .grid .step.on { color: var(--fg); }
 .grid .step.off { color: var(--dim); }
 .grid .step.now { background: var(--accent); color: var(--bg); }
