@@ -29,9 +29,14 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl }) {
   const loadBtn = el('button', { textContent: '[load]' });
   barEl.append(saveBtn, ' ', loadBtn, ' ', message);
 
+  const disarmDelete = () => {
+    clearTimeout(deleteTimer);
+    pendingDelete = null;
+  };
+
   const toggleMode = (next) => {
     mode = mode === next ? null : next;
-    pendingDelete = null;
+    disarmDelete();
     renaming = null;
     render();
   };
@@ -107,18 +112,20 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl }) {
     const name = el('button', { textContent: entry.name, className: 'scene-name' });
     name.onclick = () => doLoad(entry);
     const rename = el('button', { textContent: '[rename]' });
-    rename.onclick = () => { renaming = entry.id; pendingDelete = null; render(); };
+    rename.onclick = () => { renaming = entry.id; disarmDelete(); render(); };
     const sure = pendingDelete === entry.id;
     const del = el('button', { textContent: sure ? '[sure?]' : '[x]' });
     del.onclick = () => {
-      clearTimeout(deleteTimer);
+      disarmDelete();
       if (!sure) {
         pendingDelete = entry.id;
-        deleteTimer = setTimeout(() => { pendingDelete = null; render(); }, 3000);
+        deleteTimer = setTimeout(() => {
+          pendingDelete = null;
+          if (mode === 'load' && !renaming) render(); // never rebuild the panel under something being typed
+        }, 3000);
         render();
         return;
       }
-      pendingDelete = null;
       const r = store.remove(entry.id);
       if (!r.ok) say(r.error);
       render();
