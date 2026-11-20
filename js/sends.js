@@ -1,11 +1,10 @@
-import { createDelay, createReverb } from './fx.js';
+import { createEffect } from './fx.js';
 import { clampLevel } from './mix.js';
 
 const SLOTS = 3;
 const DEFAULT_LEVEL = 0.3;
 const RETIRE_MS = 150; // long enough for a send's ramp to reach silence
 const TAIL_PAD_MS = 100;
-const MAKERS = { delay: createDelay, reverb: createReverb };
 
 /** Effects and the module -> effect sends. Owns the effect instances and every send gain. */
 export function createRouting(ctx, master) {
@@ -43,9 +42,7 @@ export function createRouting(ctx, master) {
   return {
     effects,
     addEffect(type, params) {
-      const make = MAKERS[type];
-      if (!make) throw new Error(`unknown effect: ${type}`);
-      const fx = make(ctx, params);
+      const fx = createEffect(ctx, type, params);
       fx.id = `fx${++counter}`;
       fx.name = type;
       fx.output.connect(master);

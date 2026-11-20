@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FX_DEFAULTS, clampFxParam, makeImpulse, createDelay, createReverb } from '../js/fx.js';
+import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, makeImpulse, createDelay, createReverb } from '../js/fx.js';
 import { mulberry32 } from '../js/rng.js';
 
 function stubCtx() {
@@ -239,4 +239,24 @@ test('bypass: a reverb rebuild while disabled leaves the muted return alone', (t
   fx.setParam('decay', 5);
   t.mock.timers.tick(200);
   assert.equal(fx.output.gain.calls.length, calls);
+});
+
+test('the registry lists every effect type with defaults, ranges and a factory', () => {
+  assert.deepEqual(FX_TYPES, ['delay', 'reverb']);
+  for (const type of FX_TYPES) {
+    assert.deepEqual(Object.keys(FX_RANGES[type]).sort(), Object.keys(FX_DEFAULTS[type]).sort(), type);
+    for (const [key, v] of Object.entries(FX_DEFAULTS[type])) {
+      const [lo, hi] = FX_RANGES[type][key];
+      assert.ok(v >= lo && v <= hi, `${type}.${key} default ${v} outside ${lo}-${hi}`);
+    }
+    const fx = createEffect(stubCtx(), type);
+    assert.equal(fx.type, type);
+    assert.equal(fx.enabled, true);
+    for (const fn of ['setParam', 'setEnabled', 'tailMs', 'dispose', 'disconnect']) assert.equal(typeof fx[fn], 'function', `${type}.${fn}`);
+  }
+});
+
+test('createEffect refuses an unknown type', () => {
+  assert.throws(() => createEffect(stubCtx(), 'chorus'), /unknown effect: chorus/);
+  assert.throws(() => createEffect(stubCtx(), undefined), /unknown effect/);
 });

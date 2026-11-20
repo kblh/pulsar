@@ -11,14 +11,14 @@ export const FX_DEFAULTS = {
   reverb: { decay: 2.5, damping: 0.5, return: 0.5 },
 };
 
-const RANGES = {
+export const FX_RANGES = {
   delay: { time: [10, 2000], feedback: [0, 0.9], tone: [200, 12000], return: [0, 1] },
   reverb: { decay: [0.3, 10], damping: [0, 1], return: [0, 1] },
 };
 
 /** The accepted value for a parameter, or null when the key or value is unusable. */
 export function clampFxParam(type, key, value) {
-  const range = RANGES[type]?.[key];
+  const range = FX_RANGES[type]?.[key];
   if (!range) return null;
   if (value === null || typeof value === 'boolean' || (typeof value === 'string' && value.trim() === '')) return null;
   const n = Number(value);
@@ -185,4 +185,15 @@ export function createReverb(ctx, params) {
       ret.disconnect();
     },
   };
+}
+
+const MAKERS = { delay: createDelay, reverb: createReverb };
+
+/** Every effect type the app knows, in menu order. Defaults, ranges and factories above are keyed by these. */
+export const FX_TYPES = Object.keys(MAKERS);
+
+export function createEffect(ctx, type, params) {
+  const make = MAKERS[type];
+  if (!make) throw new Error(`unknown effect: ${type}`);
+  return make(ctx, params);
 }

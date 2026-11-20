@@ -6,6 +6,8 @@ import { createCard } from './card.js';
 import { createSlider, createSegmented } from './controls.js';
 import { createEnvelopeEditor } from './envelope.js';
 import { splitRoot, joinRoot } from './hud.js';
+import { FX_TYPES } from './fx.js';
+import { FX_FIELDS, FX_LABELS } from './fx-fields.js';
 import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 
@@ -180,20 +182,6 @@ function sendRow(engine, m, slot) {
   });
   return { row: row(`send ${slot + 1}`, sel, level.node), fill };
 }
-
-const FX_FIELDS = {
-  delay: [
-    { key: 'time', min: 10, max: 2000, step: 10, scale: 'log', format: (v) => `${v} ms` },
-    { key: 'feedback', min: 0, max: 0.9, step: 0.05, format: (v) => v.toFixed(2) },
-    { key: 'tone', min: 200, max: 12000, step: 100, scale: 'log', format: (v) => `${v} Hz` },
-    { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
-  ],
-  reverb: [
-    { key: 'decay', min: 0.3, max: 10, step: 0.1, scale: 'log', format: (v) => `${v.toFixed(1)} s` },
-    { key: 'damping', min: 0, max: 1, step: 0.05, format: pct },
-    { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
-  ],
-};
 
 function fxControls(engine, fx) {
   return FX_FIELDS[fx.type].map(({ key, min, max, step, scale, format }) => {
@@ -396,11 +384,12 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
     b1.onclick = choose(createMelodicModule);
     b2.onclick = choose(createRhythmicModule);
     b3.onclick = choose(createDroneModule);
-    const b4 = el('button', { textContent: '[reverb]' });
-    const b5 = el('button', { textContent: '[delay]' });
-    b4.onclick = () => { showMenu(false); addEffect('reverb'); };
-    b5.onclick = () => { showMenu(false); addEffect('delay'); };
-    menu.append(' ', b1, ' ', b2, ' ', b3, ' ', b4, ' ', b5);
+    const fxButtons = FX_TYPES.flatMap((type) => {
+      const b = el('button', { textContent: `[${FX_LABELS[type]}]` });
+      b.onclick = () => { showMenu(false); addEffect(type); };
+      return [' ', b];
+    });
+    menu.append(' ', b1, ' ', b2, ' ', b3, ...fxButtons);
   };
   plus.onclick = () => showMenu(menu.childElementCount === 0);
   adderEl.append(plus, menu);
