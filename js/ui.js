@@ -4,6 +4,7 @@ import { cleanName, NAME_MAX } from './scene.js';
 import { mountScenes } from './scenes-ui.js';
 import { createCard } from './card.js';
 import { createSlider, createSegmented } from './controls.js';
+import { createEnvelopeEditor } from './envelope.js';
 import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 
@@ -23,12 +24,6 @@ function select(options, value, onChange) {
   for (const o of options) s.append(el('option', { value: o, textContent: o, selected: o === value }));
   s.onchange = () => onChange(s.value);
   return s;
-}
-
-function number(value, min, max, onChange, step = 1) {
-  const i = el('input', { type: 'number', value, min, max, step });
-  i.onchange = () => onChange(i.value);
-  return i;
 }
 
 function text(value, onChange) {
@@ -93,10 +88,16 @@ function pitchRows(m) {
 
 function melodicControls(m) {
   const set = (k) => (v) => m.setParam(k, v);
-  const env = (k) => number(m.params.env[k], 0, k === 's' ? 1 : 5, (v) => m.setParam('env', { [k]: v }), k === 's' ? 0.05 : 0.01);
+  const envelope = createEnvelopeEditor({
+    env: m.params.env,
+    onChange: (partial) => {
+      m.setParam('env', partial);
+      envelope.set(m.params.env); // the module's accepted values
+    },
+  });
   return [
     row('osc', seg(waveOptions, m.params.wave, 'osc', set('wave'))),
-    row('adsr', env('a'), env('d'), env('s'), env('r')),
+    row('envelope', envelope.node),
     paramSlider('bpm', m, 'bpm', { min: 20, max: 300, step: 1 }),
     paramSlider('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct }),
     ...pitchRows(m),

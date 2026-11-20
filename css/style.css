@@ -133,6 +133,18 @@ input[type=range] { flex: 1 1 8ch; accent-color: var(--accent); padding: 0; }
 .hud-seg button[aria-checked=true] { color: var(--bg); background: var(--accent); text-shadow: none; }
 .hud-seg button:focus-visible { outline-offset: -3px; }
 
+/* envelope graph */
+.env { flex: 1 1 240px; min-width: 0; max-width: 480px; }
+.env-svg { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; background: rgba(0, 0, 0, 0.35); }
+.env-grid line { stroke: var(--line); stroke-dasharray: 3 4; }
+.env-area { fill: rgba(94, 238, 255, 0.1); }
+.env-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; filter: drop-shadow(0 0 4px var(--glow)); }
+.env-node { cursor: grab; touch-action: none; outline: none; }
+.env-hit { fill: transparent; }
+.env-dot { fill: var(--bg); stroke: var(--accent); stroke-width: 2; }
+.env-node:hover .env-dot, .env-node:focus-visible .env-dot { fill: var(--accent); }
+.env-readout { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; color: var(--dim); }
+
 /* step grids */
 .grid { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 8px; max-width: 100%; overflow-x: auto; }
 .grid .line { white-space: pre; letter-spacing: 0.15em; }
