@@ -87,6 +87,7 @@ body.detail-open header.bar, body.detail-open #scene-panel, body.detail-open .ca
 /* controls */
 button {
   font: inherit; color: var(--fg); background: none; border: 0; cursor: pointer; padding: 0;
+  touch-action: manipulation; /* rapid taps on - / + must not zoom the page */
 }
 button:hover, button:focus-visible { color: var(--accent); text-shadow: 0 0 8px var(--glow); }
 :focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
@@ -124,7 +125,13 @@ input[type=range] { flex: 1 1 8ch; accent-color: var(--accent); padding: 0; }
 .hud-input {
   position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0;
   border: 0; background: none; cursor: pointer; touch-action: pan-y;
+  -webkit-appearance: none; appearance: none;
 }
+/* a hairline thumb: the browser maps the pointer to the value as (x - thumb/2) / (width - thumb), and a normal thumb skews the drawn bar */
+.hud-input::-webkit-slider-runnable-track { height: 44px; background: transparent; border: 0; }
+.hud-input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 1px; height: 44px; border: 0; background: transparent; }
+.hud-input::-moz-range-track { height: 44px; background: transparent; border: 0; }
+.hud-input::-moz-range-thumb { width: 1px; height: 44px; border: 0; background: transparent; }
 .hud-slider:has(.hud-input:focus-visible) .hud-bar { outline: 1px solid var(--accent); outline-offset: 2px; }
 .hud-value { flex: none; min-width: 4ch; text-align: right; color: var(--fg); }
 .nudge { flex: none; min-width: 44px; min-height: 44px; font-size: 18px; color: var(--accent); }
@@ -135,12 +142,12 @@ input[type=range] { flex: 1 1 8ch; accent-color: var(--accent); padding: 0; }
 
 /* envelope graph */
 .env { flex: 1 1 240px; min-width: 0; max-width: 480px; }
-.env-svg { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; background: rgba(0, 0, 0, 0.35); }
+.env-svg { display: block; overflow: visible; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; background: rgba(0, 0, 0, 0.35); }
 .env-grid line { stroke: var(--line); stroke-dasharray: 3 4; }
 .env-area { fill: rgba(94, 238, 255, 0.1); }
 .env-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; filter: drop-shadow(0 0 4px var(--glow)); }
 .env-node { cursor: grab; touch-action: none; outline: none; }
-.env-hit { fill: transparent; }
+.env-hit { fill: transparent; touch-action: none; }
 .env-dot { fill: var(--bg); stroke: var(--accent); stroke-width: 2; }
 .env-node:hover .env-dot, .env-node:focus-visible .env-dot { fill: var(--accent); }
 .env-readout { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; color: var(--dim); }

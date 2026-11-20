@@ -1,4 +1,4 @@
-import { snap, toFraction, fromFraction } from './hud.js';
+import { snap, toFraction, fromFraction, valueChars } from './hud.js';
 
 function el(tag, props = {}, ...children) {
   const e = Object.assign(document.createElement(tag), props);
@@ -25,6 +25,7 @@ export function createSlider({ min, max, step, value, scale = 'linear', format, 
   else Object.assign(input, { min, max, step });
   if (ariaLabel) input.setAttribute('aria-label', ariaLabel);
   const valueEl = format ? el('span', { className: 'hud-value' }) : null;
+  if (valueEl) valueEl.style.width = `${valueChars(format, opts)}ch`; // a fixed width: the bar must not move while dragging
 
   function render() {
     fill.style.setProperty('--p', String(toFraction(cur, opts) * 100));

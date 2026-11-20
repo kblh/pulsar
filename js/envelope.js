@@ -1,4 +1,4 @@
-import { envLayout, nodePositions, envFromDrag } from './hud.js';
+import { envLayout, nodePositions, envFromDrag, nearestNode } from './hud.js';
 
 const W = 320;
 const H = 120;
@@ -77,28 +77,45 @@ export function createEnvelopeEditor({ env, onChange }) {
     set('release', cur.r, `${cur.r.toFixed(2)} s`);
   }
 
-  // pointer: capture on the node so the drag keeps working outside the graph
+  // One handler on the svg picks the nearest node, so hit areas are not clipped by the svg box and
+  // overlapping nodes never hide each other. The grab offset keeps a node from jumping to the pointer.
   const toGraph = (e) => {
     const r = root.getBoundingClientRect();
     return { x: ((e.clientX - r.left) * W) / r.width, y: ((e.clientY - r.top) * H) / r.height };
   };
+  const nodeAt = (pt) => nearestNode(pt, nodePositions(cur, L), HIT_R);
+  let drag = null; // { id, pointerId, dx, dy }
+
+  root.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.isPrimary === false) return;
+    const pt = toGraph(e);
+    const id = nodeAt(pt);
+    if (!id) return;
+    const p = nodePositions(cur, L)[id];
+    drag = { id, pointerId: e.pointerId, dx: pt.x - p.x, dy: pt.y - p.y };
+    try { root.setPointerCapture(e.pointerId); } catch { /* not an active pointer (synthetic event) */ }
+    e.preventDefault();
+    nodeEls[NODES.findIndex((n) => n.id === id)].focus();
+  });
+  root.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const pt = toGraph(e);
+    onChange?.(envFromDrag(drag.id, { x: pt.x - drag.dx, y: pt.y - drag.dy }, cur, L));
+  });
+  const stop = (e) => {
+    if (drag && e.pointerId === drag.pointerId) drag = null;
+  };
+  root.addEventListener('pointerup', stop);
+  root.addEventListener('pointercancel', stop);
+  root.addEventListener('lostpointercapture', stop);
+  // touch-action on an svg <g> is not honoured everywhere: stop the scroll by hand, but only on a node
+  root.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    if (t && nodeAt(toGraph(t))) e.preventDefault();
+  }, { passive: false });
+
   for (const g of nodeEls) {
     const id = g.dataset.node;
-    let dragging = false;
-    g.addEventListener('pointerdown', (e) => {
-      dragging = true;
-      try { g.setPointerCapture(e.pointerId); } catch { /* not an active pointer (synthetic event) */ }
-      e.preventDefault();
-      g.focus();
-    });
-    g.addEventListener('pointermove', (e) => {
-      if (dragging) onChange?.(envFromDrag(id, toGraph(e), cur, L));
-    });
-    const stop = () => { dragging = false; };
-    g.addEventListener('pointerup', stop);
-    g.addEventListener('pointercancel', stop);
-    g.addEventListener('lostpointercapture', stop);
-
     g.addEventListener('keydown', (e) => {
       const big = e.shiftKey ? 0.1 : 0.01;
       const dx = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;

@@ -76,6 +76,31 @@ export function envFromDrag(node, point, env, L) {
   return { d: round2(unitToTime(unit(L.pad + L.seg))), s: round2(s) };
 }
 
+/** Which node (`attack`, `decay` or `release`) is nearest to a graph point within `radius`, else null. */
+export function nearestNode(point, positions, radius) {
+  const x = num(point?.x);
+  const y = num(point?.y);
+  if (x === null || y === null) return null;
+  let best = null;
+  let bestD = Infinity;
+  for (const id of ['attack', 'decay', 'release']) {
+    const d = Math.hypot(positions[id].x - x, positions[id].y - y);
+    if (d <= radius && d < bestD) {
+      best = id;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/** How many characters the widest value text of a slider has, so the text can have a fixed width. */
+export function valueChars(format, { min, max, step }) {
+  let w = 0;
+  const n = 24;
+  for (let i = 0; i <= n; i++) w = Math.max(w, String(format(snap(min + ((max - min) * i) / n, { min, max, step }))).length);
+  return w;
+}
+
 // ---- drone root note <-> picker ----
 /** `{ root, octave }` for a note name; enharmonic spellings come back as the ROOTS name. */
 export function splitRoot(rootNote) {

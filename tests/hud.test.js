@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { snap, toFraction, fromFraction, envLayout, nodePositions, envFromDrag, splitRoot, joinRoot } from '../js/hud.js';
+import { snap, toFraction, fromFraction, envLayout, nodePositions, envFromDrag, nearestNode, valueChars, splitRoot, joinRoot } from '../js/hud.js';
 import { ROOTS } from '../js/options.js';
 
 const unit = { min: 0, max: 1, step: 0.05 };
@@ -124,4 +124,33 @@ test('splitRoot reads the drone root and shows enharmonic spellings as ROOTS nam
 test('joinRoot builds a note name and split/join round-trip for every root and octave 0-6', () => {
   assert.equal(joinRoot('Eb', 3), 'Eb3');
   for (const root of ROOTS) for (let octave = 0; octave <= 6; octave++) assert.deepEqual(splitRoot(joinRoot(root, octave)), { root, octave });
+});
+
+test('nearestNode picks the closest of the three nodes within the radius, otherwise null', () => {
+  const p = nodePositions(DEFAULT, layout);
+  assert.equal(nearestNode({ x: p.release.x + 3, y: p.release.y - 4 }, p, 26), 'release');
+  assert.equal(nearestNode({ x: p.decay.x, y: p.decay.y + 10 }, p, 26), 'decay');
+  assert.equal(nearestNode({ x: p.attack.x - 10, y: p.attack.y - 18 }, p, 26), 'attack'); // above the svg box
+  assert.equal(nearestNode({ x: 160, y: 60 }, p, 5), null);
+  assert.equal(nearestNode({ x: p.attack.x - 20, y: p.attack.y - 18 }, p, 26), null); // 26.9 away
+  assert.equal(nearestNode({ x: NaN, y: 0 }, p, 26), null);
+});
+
+test('nearestNode ignores the two fixed corner points and breaks ties towards attack', () => {
+  const p = nodePositions(DEFAULT, layout);
+  assert.equal(nearestNode({ x: p.start.x, y: p.start.y }, p, 4), null);
+  assert.equal(nearestNode({ x: p.sustainEnd.x, y: p.sustainEnd.y }, p, 4), null);
+  const stacked = nodePositions({ a: 5, d: 0, s: 1, r: 0.15 }, layout); // attack and decay coincide
+  assert.equal(nearestNode({ x: stacked.attack.x, y: stacked.attack.y }, stacked, 26), 'attack');
+});
+
+test('valueChars is the widest text a slider will ever show, so its width can be fixed', () => {
+  const fade = { min: 0.5, max: 30, step: 0.5 };
+  const fadeFormat = (v) => `${v} s`;
+  const widest = (o, fmt) => { let w = 0; for (let v = o.min; v <= o.max + 1e-9; v += o.step) w = Math.max(w, fmt(snap(v, o)).length); return w; };
+  assert.equal(valueChars(fadeFormat, fade), widest(fade, fadeFormat));
+  const time = { min: 10, max: 2000, step: 10 };
+  const timeFormat = (v) => `${v} ms`;
+  assert.equal(valueChars(timeFormat, time), widest(time, timeFormat));
+  assert.equal(valueChars((v) => `${Math.round(v * 100)}%`, { min: 0, max: 1, step: 0.01 }), 4);
 });
