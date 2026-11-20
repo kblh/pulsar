@@ -5,6 +5,7 @@ import { mountScenes } from './scenes-ui.js';
 import { createCard } from './card.js';
 import { createSlider, createSegmented } from './controls.js';
 import { createEnvelopeEditor } from './envelope.js';
+import { splitRoot, joinRoot } from './hud.js';
 import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 
@@ -211,19 +212,31 @@ function fxControls(engine, fx) {
 const NOTE_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 const midiName = (n) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
 
+/** The drone's base tone: a tone select and an octave slider. Both show what the module accepted. */
+function rootPicker(m) {
+  const cur = () => splitRoot(m.params.rootNote) ?? { root: 'C', octave: 2 };
+  const show = () => {
+    const c = cur();
+    tone.value = c.root;
+    octave.set(c.octave);
+  };
+  const apply = (root, oct) => {
+    m.setParam('rootNote', joinRoot(root, oct)); // the module refuses tones outside C0-C6
+    show();
+  };
+  const tone = select(ROOTS, cur().root, (root) => apply(root, cur().octave));
+  const octave = createSlider({
+    min: 0, max: 6, step: 1, format: String, nudge: 1, ariaLabel: 'octave', value: cur().octave,
+    onInput: (o) => apply(tone.value, o),
+  });
+  return row('base', tone, octave.node);
+}
+
 function droneControls(m) {
   const set = (k) => (v) => m.setParam(k, v);
-  // Inputs show what the module actually accepted (it clamps or ignores bad values).
-  const synced = (make, key) => {
-    const input = make((v) => {
-      m.setParam(key, v);
-      input.value = m.params[key];
-    });
-    return input;
-  };
   return [
     row('osc', seg(waveOptions, m.params.wave, 'osc', set('wave'))),
-    row('base', synced((cb) => text(m.params.rootNote, cb), 'rootNote')),
+    rootPicker(m),
     ...pitchRows(m),
     paramSlider('max extra', m, 'maxExtra', { min: 0, max: 6, step: 1 }),
     paramSlider('rate', m, 'rate', { min: 1, max: 10, step: 1 }),
