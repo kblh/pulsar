@@ -45,7 +45,11 @@ export function createSequence({ name, loop, parts } = {}, host) {
     running: false,
   };
 
-  /** Members of the current part run, controlled modules outside it stop; a member that already runs is left alone. */
+  /**
+   * Members of the current part run, controlled modules outside it stop. Every controlled module is told its state,
+   * also when it already has it: the host makes that a hand-made state, so the transport's [play all] cannot bring back
+   * a module this part does not want. Starting a module that already runs does nothing there.
+   */
   function enter() {
     const part = seq.parts[seq.index];
     if (!part) return;
@@ -54,10 +58,7 @@ export function createSequence({ name, loop, parts } = {}, host) {
     const controlled = new Set(seq.parts.flatMap((p) => p.modules));
     for (const id of controlled) {
       if (!live.has(id)) continue;
-      const want = here.has(id);
-      const on = host.isRunning(id);
-      if (want && !on) host.setRunning(id, true);
-      else if (!want && on) host.setRunning(id, false);
+      host.setRunning(id, here.has(id));
     }
   }
 
@@ -85,6 +86,14 @@ export function createSequence({ name, loop, parts } = {}, host) {
     rewind() {
       seq.elapsed = 0;
       last = null;
+    },
+    /** The user's own play: make the modules match the current part, also when it is resumed mid-part. */
+    apply() {
+      if (seq.running) enter();
+    },
+    /** Called by the transport after [play all] has restarted everything: a part that was just entered has the last word. */
+    settle() {
+      if (seq.running && seq.elapsed === 0) enter();
     },
     tick(now) {
       if (!seq.running) {

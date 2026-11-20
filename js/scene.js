@@ -232,7 +232,7 @@ export function addModuleFromData(engine, e, { fxs = [] } = {}) {
     engine.setVolume(m, e.volume);
     engine.setPan(m, e.pan);
     e.sends.forEach((s, slot) => engine.setSend(m, slot, { fx: fxs[s.fx]?.id ?? null, level: s.level }));
-    if (!e.running) engine.toggle(m);
+    if (!e.running) engine.setRunning(m, false); // not toggle: a module registered while [stop all] is active is stopped already
   } catch (err) {
     try { engine.removeModule(m.id); } catch { /* already gone */ }
     throw err;

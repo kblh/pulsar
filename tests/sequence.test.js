@@ -81,12 +81,13 @@ test('start without parts does nothing', () => {
   assert.deepEqual(host.calls, []);
 });
 
-test('start enters the first part: members start, controlled others stop, others untouched, running members left alone', () => {
+test('start enters the first part: every controlled module is told its state, a module in no part is not touched', () => {
   const host = fakeHost([1, 2, 3, 4], [2, 3, 4]); // 4 is in no part, 2 already runs
   const s = createSequence({ parts: parts2() }, host);
   s.start();
   assert.equal(s.running, true);
-  assert.deepEqual(host.calls, [[1, true], [3, false]]);
+  // every controlled module gets a call (so the transport forgets it), also the one that already runs and keeps running
+  assert.deepEqual(host.calls, [[1, true], [2, true], [3, false]]);
   assert.deepEqual(on(host), [1, 2, 4]);
 });
 
@@ -188,7 +189,8 @@ test('rewind sets the time of the current part to 0 and a later start enters the
   host.setRunning(3, false);
   host.calls.length = 0;
   s.start();
-  assert.deepEqual(host.calls, [[3, true]]);
+  assert.ok(host.calls.some(([id, want]) => id === 3 && want === true), 'part 2 is entered again and brings module 3 back');
+  assert.deepEqual(on(host), [2, 3]);
 });
 
 test('next and prev: running jumps and enters the part, stopped only moves, the ends depend on loop', () => {
@@ -359,4 +361,27 @@ test('a non-finite time and a tick while stopped are ignored', () => {
   assert.equal(s.elapsed, 0);
   s.tick(3);
   assert.equal(s.elapsed, 3);
+});
+
+test('apply enters the current part again while running, settle only when the part was just entered', () => {
+  const host = fakeHost();
+  const s = createSequence({ parts: parts2() }, host);
+  s.apply();
+  s.settle();
+  assert.deepEqual(host.calls, [], 'a stopped sequence does nothing');
+  s.start();
+  s.tick(0);
+  s.tick(3);
+  host.setRunning(1, false);
+  host.calls.length = 0;
+  s.settle();
+  assert.deepEqual(host.calls, [], 'mid-part: settle leaves the modules alone');
+  s.apply();
+  assert.ok(host.calls.length > 0);
+  assert.deepEqual(on(host), [1, 2], 'apply re-asserts the part');
+  s.rewind();
+  host.setRunning(1, false);
+  host.calls.length = 0;
+  s.settle();
+  assert.deepEqual(on(host), [1, 2], 'a part that was just entered: settle re-asserts it (part 1 has modules 1 and 2)');
 });

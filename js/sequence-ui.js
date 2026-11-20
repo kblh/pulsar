@@ -24,6 +24,7 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
     const wasRunning = seq.running;
     engine.toggle(seq);
     if (wasRunning) seq.rewind(); // the stop button goes back to the start of the part; stop all only pauses
+    else seq.apply(); // play brings the current part to life, also when it resumes mid-part after [stop all]
   };
   const status = el('span', { className: 'seq-status' });
   const bar = el('span', { className: 'seq-bar' });

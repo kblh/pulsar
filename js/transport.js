@@ -35,6 +35,8 @@ export function createTransport() {
       for (const id of ids) modules.get(id)?.start();
       stoppedByUs.clear();
       stopped = false;
+      // Items restart in registration order, so one that decides about other items (the sequence) must come last.
+      for (const m of modules.values()) m.settle?.();
     },
     /** True when [stop all] (not the user) stopped this module and play-all would restart it. */
     stoppedByUs: (id) => stoppedByUs.has(id),

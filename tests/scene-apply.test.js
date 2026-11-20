@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyScene, validateScene, serializeScene } from '../js/scene.js';
+import { applyScene, validateScene, serializeScene, addModuleFromData, cleanModule } from '../js/scene.js';
 import { createMelodicModule, createDroneModule } from '../js/module.js';
 
 function fakeEngine({ stopped = false, failAddModule = [], failSetVolume = [], failAddEffect = [], failAddSequence = false } = {}) {
@@ -31,6 +31,7 @@ function fakeEngine({ stopped = false, failAddModule = [], failSetVolume = [], f
     setPan(m, v) { m.pan = v; log.push('pan'); },
     setSend(m, slot, patch) { Object.assign(m.sends[slot], patch); log.push('send'); },
     toggle(m) { m.running = !m.running; log.push(`toggle:${m.type}`); },
+    setRunning(m, on) { if (m.running !== on) { m.running = on; log.push(`toggle:${m.type}`); } },
     sequenceData: null,
     addSequence(data) {
       if (failAddSequence) throw new Error('boom');
@@ -224,4 +225,33 @@ test('a module that could not be built disappears from the parts, and a failing 
   const r = applyScene(bad, validateScene({ version: 1, effects: [], modules: [mod('drone')], sequence: { parts: [] } }).scene, fakeUi(bad));
   assert.deepEqual(r.skipped, ['sequence']);
   assert.equal(bad.modules.length, 1);
+});
+
+test('addModuleFromData builds one module from cleaned data: params, name, volume, pan, sends and running', () => {
+  const e = fakeEngine();
+  const data = cleanModule({ type: 'drone', name: 'pad', params: { rate: 7, mix: 0.5 }, volume: 0.4, pan: -0.5, running: false, sends: [{ fx: 0, level: 0.8 }, { fx: null, level: 0.2 }, { fx: 5, level: 0.1 }] }, new Map([[0, 0]]));
+  const m = addModuleFromData(e, data, { fxs: [{ id: 'fx1' }] });
+  assert.equal(e.modules.length, 1);
+  assert.equal(e.modules[0], m);
+  assert.deepEqual([m.type, m.name, m.volume, m.pan, m.running], ['drone', 'pad', 0.4, -0.5, false]);
+  assert.deepEqual([m.params.rate, m.params.mix], [7, 0.5]);
+  assert.deepEqual(m.sends.map((x) => [x.fx, x.level]), [['fx1', 0.8], [null, 0.2], [null, 0.1]]);
+  const plain = addModuleFromData(fakeEngine(), cleanModule({ type: 'melodic' }));
+  assert.deepEqual(plain.sends.map((x) => x.fx), [null, null, null], 'without effects every send stays empty');
+});
+
+test('addModuleFromData removes a module it could not finish and throws', () => {
+  const e = fakeEngine({ failSetVolume: ['drone'] });
+  assert.throws(() => addModuleFromData(e, cleanModule({ type: 'drone' })));
+  assert.equal(e.modules.length, 0);
+  const e2 = fakeEngine({ failAddModule: ['drone'] });
+  assert.throws(() => addModuleFromData(e2, cleanModule({ type: 'drone' })));
+  assert.equal(e2.modules.length, 0);
+});
+
+test('addModuleFromData switches a module off with setRunning, so a module that the transport already stopped is not started', () => {
+  const e = fakeEngine();
+  e.addModule = (m) => { m.sends = [0, 1, 2].map(() => ({ fx: null, level: 0.3 })); m.volume = 1; m.pan = 0; m.running = false; e.modules.push(m); }; // [stop all] stopped it on registration
+  const m = addModuleFromData(e, cleanModule({ type: 'drone', running: false }));
+  assert.equal(m.running, false);
 });

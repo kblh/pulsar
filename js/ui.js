@@ -438,6 +438,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
     const importBtn = el('button', { textContent: '[import module]' });
     importBtn.onclick = () => {
       showMenu(false);
+      engine.resume().catch(() => {}); // here is the user's gesture; after the file picker there may be none (iOS)
       moduleInput.click();
     };
     menu.append(' ', b1, ' ', b2, ' ', b3, ...fxButtons, ...seqButtons, ' ', importBtn);
@@ -474,7 +475,6 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
       const { entries, problems } = parseModuleFile(text);
       if (!entries.length) { skip(file, problems[0] ?? 'nothing usable'); continue; }
       try {
-        await engine.resume();
         addPanel(addModuleFromData(engine, entries[0]));
         added++;
       } catch {
