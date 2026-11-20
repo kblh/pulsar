@@ -8,6 +8,7 @@ import { createEnvelopeEditor } from './envelope.js';
 import { splitRoot, joinRoot, formatCents } from './hud.js';
 import { FX_TYPES, FX_NEEDS_WORKLET } from './fx.js';
 import { FX_FIELDS, FX_LABELS } from './fx-fields.js';
+import { mountSequenceCard } from './sequence-ui.js';
 import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 
@@ -258,7 +259,7 @@ function rhythmicControls(m) {
   ];
 }
 
-export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, scenesEl, scenePanelEl, store }) {
+export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, transportEl, scenesEl, scenePanelEl, store }) {
   const panels = new Map(); // module id -> { card, rows, module, toggle }
   const fxCards = new Map(); // effect id -> { card, fx, bypass, controls }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -281,6 +282,21 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
     if (entry && detail.current() === entry.card) detail.close();
     entry?.card.node.remove();
     fxCards.delete(id);
+  }
+
+  let sequenceUi = null; // the card of the one sequence, if there is one
+
+  function addSequencePanel(seq) {
+    sequenceUi = mountSequenceCard({ engine, seq, detail, container: sequenceEl, nameEditor, onRemove: removeSequencePanel });
+  }
+
+  function removeSequencePanel() {
+    if (sequenceUi) {
+      if (detail.current() === sequenceUi.card) detail.close();
+      sequenceUi.remove();
+      sequenceUi = null;
+    }
+    engine.removeSequence();
   }
 
   function removeModulePanel(id) {
@@ -400,7 +416,22 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
       b.onclick = () => { showMenu(false); addEffect(type); };
       return [' ', b];
     });
-    menu.append(' ', b1, ' ', b2, ' ', b3, ...fxButtons);
+    const seqButtons = [];
+    if (!engine.sequence) {
+      const b = el('button', { textContent: '[sequence]' });
+      b.onclick = () => {
+        showMenu(false);
+        let seq;
+        try {
+          seq = engine.addSequence({});
+        } catch {
+          return; // there is one already
+        }
+        addSequencePanel(seq);
+      };
+      seqButtons.push(' ', b);
+    }
+    menu.append(' ', b1, ' ', b2, ' ', b3, ...fxButtons, ...seqButtons);
   };
   plus.onclick = () => showMenu(menu.childElementCount === 0);
   adderEl.append(plus, menu);
@@ -443,6 +474,7 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
       }
       if (card.node.classList.contains('open')) rows.forEach((r) => r.update(module.playhead));
     }
+    sequenceUi?.update();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -453,9 +485,11 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
         detail.close();
         for (const m of [...engine.modules]) removeModulePanel(m.id);
         for (const fx of [...engine.effects]) removeFxPanel(fx.id);
+        removeSequencePanel();
       },
       addFxPanel,
       addModulePanel: addPanel,
+      addSequencePanel,
     };
     mountScenes({ engine, store, sceneUi, barEl: scenesEl, panelEl: scenePanelEl });
   }

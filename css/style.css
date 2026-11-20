@@ -152,6 +152,23 @@ input[type=range] { flex: 1 1 8ch; accent-color: var(--accent); padding: 0; }
 .env-node:hover .env-dot, .env-node:focus-visible .env-dot { fill: var(--accent); }
 .env-readout { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; color: var(--dim); }
 
+/* sequence */
+.seq-quick { flex: 0 0 auto; width: 104px; display: grid; gap: 4px; }
+.seq-status { font-size: 12px; color: var(--dim); white-space: nowrap; }
+.seq-progress { display: block; height: 4px; border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+.seq-bar { display: block; height: 100%; width: 0; background: var(--accent); box-shadow: 0 0 6px var(--glow); }
+.seq-part { border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 12px 8px; margin: 10px 0; }
+.seq-part.current { border-color: var(--accent); box-shadow: 0 0 8px var(--glow); }
+.seq-part-head { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
+.seq-num { color: var(--dim); min-width: 2ch; }
+.seq-btn { min-width: 44px; min-height: 44px; padding: 0 10px; color: var(--accent); }
+.seq-btn.wide { border: 1px solid var(--line); border-radius: 4px; }
+.seq-btn:disabled { opacity: 0.35; cursor: default; }
+.seq-loop { gap: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.chip { min-height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--dim); }
+.chip[aria-pressed=true], .chip[aria-pressed=true]:hover { color: var(--bg); background: var(--accent); text-shadow: none; }
+
 /* step grids */
 .grid { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 8px; max-width: 100%; overflow-x: auto; }
 .grid .line { white-space: pre; letter-spacing: 0.15em; }

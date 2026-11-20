@@ -16,6 +16,7 @@ mountUi({
   engine: createEngine(),
   effectsEl: document.getElementById('effects'),
   modulesEl: document.getElementById('modules'),
+  sequenceEl: document.getElementById('sequence'),
   adderEl: document.getElementById('adder'),
   transportEl: document.getElementById('transport'),
 });
