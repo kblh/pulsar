@@ -5,7 +5,7 @@ import { mountScenes } from './scenes-ui.js';
 import { createCard } from './card.js';
 import { createSlider, createSegmented } from './controls.js';
 import { createEnvelopeEditor } from './envelope.js';
-import { splitRoot, joinRoot } from './hud.js';
+import { splitRoot, joinRoot, formatCents } from './hud.js';
 import { FX_TYPES, FX_NEEDS_WORKLET } from './fx.js';
 import { FX_FIELDS, FX_LABELS } from './fx-fields.js';
 import { createDetail } from './detail.js';
@@ -100,6 +100,9 @@ function melodicControls(m) {
   });
   return [
     row('osc', seg(waveOptions, m.params.wave, 'osc', set('wave'))),
+    row('osc 2', seg(waveOptions, m.params.wave2, 'osc 2', set('wave2'))),
+    paramSlider('mix', m, 'mix', { min: 0, max: 1, step: 0.05, format: pct }),
+    paramSlider('detune', m, 'detune', { min: -50, max: 50, step: 1, format: formatCents }),
     row('envelope', envelope.node),
     paramSlider('bpm', m, 'bpm', { min: 20, max: 300, step: 1 }),
     paramSlider('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct }),
@@ -224,6 +227,9 @@ function droneControls(m) {
   const set = (k) => (v) => m.setParam(k, v);
   return [
     row('osc', seg(waveOptions, m.params.wave, 'osc', set('wave'))),
+    row('osc 2', seg(waveOptions, m.params.wave2, 'osc 2', set('wave2'))),
+    paramSlider('mix', m, 'mix', { min: 0, max: 1, step: 0.05, format: pct }),
+    paramSlider('detune', m, 'detune', { min: -50, max: 50, step: 1, format: formatCents }),
     rootPicker(m),
     ...pitchRows(m),
     paramSlider('max extra', m, 'maxExtra', { min: 0, max: 6, step: 1 }),
