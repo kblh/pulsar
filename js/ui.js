@@ -3,6 +3,7 @@ import { WAVES, ROOTS } from './options.js';
 import { cleanName, NAME_MAX } from './scene.js';
 import { mountScenes } from './scenes-ui.js';
 import { createCard } from './card.js';
+import { createSlider, createSegmented } from './controls.js';
 import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 
@@ -30,20 +31,28 @@ function number(value, min, max, onChange, step = 1) {
   return i;
 }
 
-function range(value, min, max, step, show, onChange) {
-  const val = el('span', { className: 'val', textContent: show(value) });
-  const i = el('input', { type: 'range', value, min, max, step });
-  i.oninput = () => {
-    val.textContent = show(i.value);
-    onChange(i.value);
-  };
-  return [i, val];
-}
-
 function text(value, onChange) {
   const i = el('input', { type: 'text', value, spellcheck: false });
   i.onchange = () => onChange(i.value);
   return i;
+}
+
+const pct = (v) => `${Math.round(v * 100)}%`;
+const waveOptions = WAVES.map((w) => ({ value: w, label: { sawtooth: 'saw', triangle: 'tri' }[w] ?? w }));
+
+/** A segmented switch (the node only). */
+const seg = (options, value, ariaLabel, onChange) => createSegmented({ options, value, ariaLabel, onChange }).node;
+
+/** A slider row for `m.params[key]`; it shows what the module accepted and never writes on first paint. */
+function paramSlider(label, m, key, { min, max, step, format = String, nudge = step, scale }) {
+  const s = createSlider({
+    min, max, step, scale, format, nudge, ariaLabel: label, value: m.params[key],
+    onInput: (v) => {
+      m.setParam(key, v);
+      s.set(m.params[key]);
+    },
+  });
+  return row(label, s.node);
 }
 
 /** A text grid row: one span per step; update() paints the pattern and playhead. */
@@ -67,38 +76,47 @@ function pitchRows(m) {
   const cfg = () => ({ ...m.params.pitchConfig });
   const setCfg = (k) => (v) => m.setParam('pitchConfig', { ...cfg(), notes: cfg().notes ?? 'C4 E4 G4 A4', [k]: k === 'octaves' ? Number(v) : v });
   const c = m.params.pitchConfig;
+  const octaves = createSlider({
+    min: 1, max: 4, step: 1, format: String, nudge: 1, ariaLabel: 'octaves', value: c.octaves ?? 2,
+    onInput: (v) => {
+      setCfg('octaves')(v);
+      octaves.set(m.params.pitchConfig.octaves ?? 2);
+    },
+  });
   return [
-    row('pitch', select(['scale', 'notes'], c.mode, setCfg('mode'))),
+    row('pitch', seg(['scale', 'notes'], c.mode, 'pitch mode', setCfg('mode'))),
     row('root', select(ROOTS, c.root ?? 'C', setCfg('root')), select(Object.keys(SCALES), c.scale ?? 'pentatonicMinor', setCfg('scale'))),
-    row('octaves', number(c.octaves ?? 2, 1, 4, setCfg('octaves'))),
+    row('octaves', octaves.node),
     row('notes', text(c.notes ?? 'C4 E4 G4 A4', setCfg('notes'))),
   ];
 }
 
 function melodicControls(m) {
   const set = (k) => (v) => m.setParam(k, v);
-  const env = (k) => number(m.params.env[k], 0, k === 's' ? 1 : 5, (v) => {
-    const n = Number(v);
-    if (Number.isFinite(n)) m.params.env = { ...m.params.env, [k]: Math.max(0, n) };
-  }, k === 's' ? 0.05 : 0.01);
+  const env = (k) => number(m.params.env[k], 0, k === 's' ? 1 : 5, (v) => m.setParam('env', { [k]: v }), k === 's' ? 0.05 : 0.01);
   return [
-    row('osc', select(WAVES, m.params.wave, set('wave'))),
+    row('osc', seg(waveOptions, m.params.wave, 'osc', set('wave'))),
     row('adsr', env('a'), env('d'), env('s'), env('r')),
-    row('bpm', number(m.params.bpm, 20, 300, set('bpm'))),
-    row('swing', ...range(m.params.swing, 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`, set('swing'))),
+    paramSlider('bpm', m, 'bpm', { min: 20, max: 300, step: 1 }),
+    paramSlider('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct }),
     ...pitchRows(m),
     row('rhythm', text(m.params.rhythm, set('rhythm'))),
-    row('randomize', ...range(m.params.randomize, 1, 10, 1, String, set('randomize'))),
-    row('rhythm mod', ...range(m.params.rhythmMod, 1, 10, 1, String, set('rhythmMod'))),
-    row('evolution', select(['drift', 'walk'], m.params.evolution, set('evolution'))),
+    paramSlider('randomize', m, 'randomize', { min: 1, max: 10, step: 1 }),
+    paramSlider('rhythm mod', m, 'rhythmMod', { min: 1, max: 10, step: 1 }),
+    row('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution'))),
   ];
 }
 
 function mixRows(engine, m) {
   const panText = (v) => (Math.abs(v) < 0.05 ? 'C' : `${v < 0 ? 'L' : 'R'}${Math.round(Math.abs(v) * 100)}`);
-  return [
-    row('pan', ...range(m.pan ?? 0, -1, 1, 0.05, panText, (v) => engine.setPan(m, v))),
-  ];
+  const pan = createSlider({
+    min: -1, max: 1, step: 0.05, format: panText, nudge: 0.05, ariaLabel: 'pan', value: m.pan ?? 0,
+    onInput: (v) => {
+      engine.setPan(m, v);
+      pan.set(m.pan);
+    },
+  });
+  return [row('pan', pan.node)];
 }
 
 /** The panel title's name: click to edit, Enter or blur keeps it, Esc cancels, empty falls back to the type. */
@@ -134,7 +152,6 @@ function nameEditor(obj) {
   return node;
 }
 
-const pct = (v) => `${Math.round(v * 100)}%`;
 const PLAY = '\u25B6\uFE0E'; // text presentation: phones would draw a colour emoji otherwise
 
 /** One send slot: a target select (rebuilt by fill() when effects come and go) and a level slider. */
@@ -152,23 +169,41 @@ function sendRow(engine, m, slot) {
     sel.value = m.sends[slot].fx ?? '';
   };
   fill();
-  const level = range(m.sends[slot].level, 0, 1, 0.01, pct, (v) => engine.setSend(m, slot, { level: v }));
-  return { row: row(`send ${slot + 1}`, sel, ...level), fill };
+  const level = createSlider({
+    min: 0, max: 1, step: 0.01, format: pct, nudge: 0.05, ariaLabel: `send ${slot + 1} level`, value: m.sends[slot].level,
+    onInput: (v) => {
+      engine.setSend(m, slot, { level: v });
+      level.set(m.sends[slot].level);
+    },
+  });
+  return { row: row(`send ${slot + 1}`, sel, level.node), fill };
 }
 
 const FX_FIELDS = {
-  delay: [['time', 10, 2000, 10], ['feedback', 0, 0.9, 0.05], ['tone', 200, 12000, 100], ['return', 0, 1, 0.05]],
-  reverb: [['decay', 0.3, 10, 0.1], ['damping', 0, 1, 0.05], ['return', 0, 1, 0.05]],
+  delay: [
+    { key: 'time', min: 10, max: 2000, step: 10, scale: 'log', format: (v) => `${v} ms` },
+    { key: 'feedback', min: 0, max: 0.9, step: 0.05, format: (v) => v.toFixed(2) },
+    { key: 'tone', min: 200, max: 12000, step: 100, scale: 'log', format: (v) => `${v} Hz` },
+    { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
+  ],
+  reverb: [
+    { key: 'decay', min: 0.3, max: 10, step: 0.1, scale: 'log', format: (v) => `${v.toFixed(1)} s` },
+    { key: 'damping', min: 0, max: 1, step: 0.05, format: pct },
+    { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
+  ],
 };
 
 function fxControls(engine, fx) {
-  return FX_FIELDS[fx.type].map(([key, min, max, step]) => {
-    // The input shows the value the effect actually accepted.
-    const input = number(fx.params[key], min, max, (v) => {
-      engine.setFxParam(fx, key, v);
-      input.value = fx.params[key];
-    }, step);
-    return row(key, input);
+  return FX_FIELDS[fx.type].map(({ key, min, max, step, scale, format }) => {
+    // The slider shows the value the effect actually accepted.
+    const s = createSlider({
+      min, max, step, scale, format, nudge: step, ariaLabel: key, value: fx.params[key],
+      onInput: (v) => {
+        engine.setFxParam(fx, key, v);
+        s.set(fx.params[key]);
+      },
+    });
+    return row(key, s.node);
   });
 }
 
@@ -186,12 +221,12 @@ function droneControls(m) {
     return input;
   };
   return [
-    row('osc', select(WAVES, m.params.wave, set('wave'))),
+    row('osc', seg(waveOptions, m.params.wave, 'osc', set('wave'))),
     row('base', synced((cb) => text(m.params.rootNote, cb), 'rootNote')),
     ...pitchRows(m),
-    row('max extra', synced((cb) => number(m.params.maxExtra, 0, 6, cb), 'maxExtra')),
-    row('rate', ...range(m.params.rate, 1, 10, 1, String, set('rate'))),
-    row('fade s', synced((cb) => number(m.params.fade, 0.5, 30, cb, 0.5), 'fade')),
+    paramSlider('max extra', m, 'maxExtra', { min: 0, max: 6, step: 1 }),
+    paramSlider('rate', m, 'rate', { min: 1, max: 10, step: 1 }),
+    paramSlider('fade s', m, 'fade', { min: 0.5, max: 30, step: 0.5, format: (v) => `${v} s` }),
   ];
 }
 
@@ -205,13 +240,13 @@ function statusRow(name, getText) {
 function rhythmicControls(m) {
   const set = (k) => (v) => m.setParam(k, v);
   return [
-    row('bpm', number(m.params.bpm, 20, 300, set('bpm'))),
-    row('swing', ...range(m.params.swing, 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`, set('swing'))),
+    paramSlider('bpm', m, 'bpm', { min: 20, max: 300, step: 1 }),
+    paramSlider('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct }),
     row('kick', text(m.params.voices.kick, set('voice:kick'))),
     row('snare', text(m.params.voices.snare, set('voice:snare'))),
     row('hat', text(m.params.voices.hat, set('voice:hat'))),
-    row('rhythm mod', ...range(m.params.rhythmMod, 1, 10, 1, String, set('rhythmMod'))),
-    row('evolution', select(['drift', 'walk'], m.params.evolution, set('evolution'))),
+    paramSlider('rhythm mod', m, 'rhythmMod', { min: 1, max: 10, step: 1 }),
+    row('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution'))),
   ];
 }
 
@@ -274,9 +309,14 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
     toggle.onclick = () => engine.toggle(m);
     const remove = el('button', { textContent: '[remove]', type: 'button' });
     remove.onclick = () => removeModulePanel(m.id);
-    const [volume] = range(m.volume ?? 1, 0, 1, 0.01, pct, (v) => engine.setVolume(m, v));
-    volume.className = 'card-volume';
-    volume.setAttribute('aria-label', 'volume');
+    const volume = createSlider({
+      min: 0, max: 1, step: 0.01, ariaLabel: 'volume', value: m.volume ?? 1,
+      onInput: (v) => {
+        engine.setVolume(m, v);
+        volume.set(m.volume);
+      },
+    });
+    volume.node.classList.add('card-volume');
 
     let rows;
     if (m.type === 'drone') {
@@ -306,7 +346,7 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
       title: `#${m.id} ${m.name}`,
       nameEditor: el('span', {}, `#${m.id} `, nameEditor(m)),
       lead: [toggle],
-      quick: [volume],
+      quick: [volume.node],
       actions: [remove],
       body: [...controls, grid],
       detail,
