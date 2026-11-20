@@ -7,7 +7,7 @@ function el(tag, props = {}, ...children) {
   return e;
 }
 
-function defaultDownload(filename, text) {
+export function defaultDownload(filename, text) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   el('a', { href: url, download: filename }).click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);

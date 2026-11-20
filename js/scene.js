@@ -219,6 +219,28 @@ function applyParams(m, params) {
 }
 
 /**
+ * Builds one module from cleaned data (see cleanModule) and adds it to the engine: parameters, name, volume, pan,
+ * sends (`fxs` are the effects built so far, by saved position) and the running state. A module that cannot be finished
+ * is removed again and the error is thrown. The caller adds the panel.
+ */
+export function addModuleFromData(engine, e, { fxs = [] } = {}) {
+  const m = FACTORIES[e.type]();
+  applyParams(m, e.params);
+  m.name = e.name;
+  engine.addModule(m);
+  try {
+    engine.setVolume(m, e.volume);
+    engine.setPan(m, e.pan);
+    e.sends.forEach((s, slot) => engine.setSend(m, slot, { fx: fxs[s.fx]?.id ?? null, level: s.level }));
+    if (!e.running) engine.toggle(m);
+  } catch (err) {
+    try { engine.removeModule(m.id); } catch { /* already gone */ }
+    throw err;
+  }
+  return m;
+}
+
+/**
  * Replaces the current setup with a validated scene.
  * `ui` = { clear(), addFxPanel(fx), addModulePanel(m), addSequencePanel?(sequence) }; clear() must remove every module, effect and the sequence.
  * Parts that fail to build are skipped (and reported), never left half-built.
@@ -248,21 +270,12 @@ export function applyScene(engine, scene, ui) {
   const built = []; // scene module position -> id of the module that was built (undefined when it failed)
   scene.modules.forEach((e, i) => {
     let m = null;
-    let added = false;
     try {
-      m = FACTORIES[e.type]();
-      applyParams(m, e.params);
-      m.name = e.name;
-      engine.addModule(m);
-      added = true;
-      engine.setVolume(m, e.volume);
-      engine.setPan(m, e.pan);
-      e.sends.forEach((s, slot) => engine.setSend(m, slot, { fx: fxs[s.fx]?.id ?? null, level: s.level }));
-      if (!e.running) engine.toggle(m);
+      m = addModuleFromData(engine, e, { fxs });
       ui.addModulePanel(m);
       built[i] = m.id;
     } catch {
-      if (added) {
+      if (m) {
         try { engine.removeModule(m.id); } catch { /* already gone */ }
       }
       skipped.push(`module ${i + 1} (${e.type})`);

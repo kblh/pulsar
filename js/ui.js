@@ -1,7 +1,9 @@
 import { SCALES } from './scales.js';
 import { WAVES, ROOTS } from './options.js';
-import { cleanName, NAME_MAX } from './scene.js';
-import { mountScenes } from './scenes-ui.js';
+import { cleanName, NAME_MAX, serializeModule, addModuleFromData, MAX_MODULES } from './scene.js';
+import { mountScenes, defaultDownload } from './scenes-ui.js';
+import { MAX_FILE_BYTES } from './scene-file.js';
+import { moduleFilename, moduleToFile, parseModuleFile } from './module-file.js';
 import { createCard } from './card.js';
 import { createSlider, createSegmented } from './controls.js';
 import { createEnvelopeEditor } from './envelope.js';
@@ -333,6 +335,8 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
     toggle.onclick = () => engine.toggle(m);
     const remove = el('button', { textContent: '[remove]', type: 'button' });
     remove.onclick = () => removeModulePanel(m.id);
+    const exportBtn = el('button', { textContent: '[export]', type: 'button' });
+    exportBtn.onclick = () => defaultDownload(moduleFilename(m.name), moduleToFile(serializeModule(m, engine.stoppedByTransport)));
     const volume = createSlider({
       min: 0, max: 1, step: 0.01, ariaLabel: 'volume', value: m.volume ?? 1,
       onInput: (v) => {
@@ -371,7 +375,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
       nameEditor: el('span', {}, `#${m.id} `, nameEditor(m)),
       lead: [toggle],
       quick: [volume.node],
-      actions: [remove],
+      actions: [exportBtn, remove],
       body: [...controls, grid],
       detail,
     });
@@ -431,10 +435,60 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
       };
       seqButtons.push(' ', b);
     }
-    menu.append(' ', b1, ' ', b2, ' ', b3, ...fxButtons, ...seqButtons);
+    const importBtn = el('button', { textContent: '[import module]' });
+    importBtn.onclick = () => {
+      showMenu(false);
+      moduleInput.click();
+    };
+    menu.append(' ', b1, ' ', b2, ' ', b3, ...fxButtons, ...seqButtons, ' ', importBtn);
   };
   plus.onclick = () => showMenu(menu.childElementCount === 0);
-  adderEl.append(plus, menu);
+
+  // Importing module files: each file becomes a new module (its sends stay empty, effects are not part of a module file).
+  const importMessage = el('span', { className: 'muted' });
+  let importTimer = null;
+  const sayImport = (text) => {
+    importMessage.textContent = text; // text only: file names are never markup
+    clearTimeout(importTimer);
+    importTimer = setTimeout(() => { importMessage.textContent = ''; }, 5000);
+  };
+  const moduleInput = el('input', { type: 'file', accept: '.json,application/json', multiple: true, hidden: true });
+  async function importModules(files) {
+    let added = 0;
+    let skipped = 0;
+    const reasons = [];
+    const skip = (file, why) => {
+      skipped++;
+      reasons.push(`${file.name}: ${why}`);
+    };
+    for (const file of files) {
+      if (engine.modules.length >= MAX_MODULES) { skip(file, `there are already ${MAX_MODULES} modules`); continue; }
+      if (file.size > MAX_FILE_BYTES) { skip(file, 'file is larger than 1 MB'); continue; } // before reading it
+      let text;
+      try {
+        text = await file.text();
+      } catch {
+        skip(file, 'could not be read');
+        continue;
+      }
+      const { entries, problems } = parseModuleFile(text);
+      if (!entries.length) { skip(file, problems[0] ?? 'nothing usable'); continue; }
+      try {
+        await engine.resume();
+        addPanel(addModuleFromData(engine, entries[0]));
+        added++;
+      } catch {
+        skip(file, 'could not be added');
+      }
+    }
+    sayImport(`imported ${added}${skipped ? `, skipped ${skipped}: ${reasons.slice(0, 3).join('; ')}` : ''}`);
+  }
+  moduleInput.onchange = () => {
+    const files = [...moduleInput.files];
+    moduleInput.value = ''; // the same file can be picked again
+    if (files.length) importModules(files);
+  };
+  adderEl.append(plus, menu, importMessage, moduleInput);
 
   // Offer [play all] whenever nothing is actually running (or the transport was stopped).
   const showsPlay = () => engine.isStopped() || (engine.hasModules() && !engine.anyRunning());

@@ -1,4 +1,4 @@
-const CACHE = 'pulsar-v15';
+const CACHE = 'pulsar-v16';
 const FILES = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png',
@@ -7,6 +7,7 @@ const FILES = [
   'js/melody.js', 'js/rhythm.js', 'js/scales.js', 'js/rng.js', 'js/drone.js', 'js/transport.js', 'js/mix.js', 'js/fx.js', 'js/sends.js',
   'js/options.js', 'js/scene.js', 'js/scene-store.js', 'js/scenes-ui.js', 'js/scene-file.js', 'js/card.js', 'js/detail.js', 'js/hud.js', 'js/controls.js', 'js/envelope.js',
   'js/fx-fields.js', 'js/crush.js', 'js/worklet.js', 'js/bitcrusher.worklet.js',
+  'js/sequence.js', 'js/sequence-ui.js', 'js/module-file.js',
 ];
 
 self.addEventListener('install', (e) => {
