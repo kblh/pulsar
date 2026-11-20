@@ -10,7 +10,9 @@ function el(tag, props = {}, ...children) {
  * and the close button show only in the detail, the `body` too.
  */
 export function createCard({ kind, title, nameEditor, lead = [], quick = [], actions = [], body = [], detail }) {
-  const name = el('span', { className: 'card-name', textContent: title });
+  // A real button, so the keyboard can open the card; clicking elsewhere on the card works too.
+  const name = el('button', { className: 'card-name', type: 'button', textContent: title });
+  name.setAttribute('aria-expanded', 'false');
   const closeBtn = el('button', { className: 'card-close', type: 'button', textContent: '×', title: 'close' });
   closeBtn.setAttribute('aria-label', 'close');
   const head = el('div', { className: 'card-head' },
@@ -24,7 +26,25 @@ export function createCard({ kind, title, nameEditor, lead = [], quick = [], act
     setTitle(text) {
       if (name.textContent !== text) name.textContent = text;
     },
+    /** Called by the detail controller: keep ARIA right and move focus in and back out. */
+    setOpen(open) {
+      name.setAttribute('aria-expanded', String(open));
+      if (open) {
+        node.setAttribute('role', 'dialog');
+        node.setAttribute('aria-modal', 'true');
+        node.setAttribute('aria-label', name.textContent);
+        closeBtn.focus();
+      } else {
+        node.removeAttribute('role');
+        node.removeAttribute('aria-modal');
+        node.removeAttribute('aria-label');
+        const active = document.activeElement;
+        // Give focus back unless the user has moved on to something outside this card.
+        if (!active || active === document.body || node.contains(active)) name.focus();
+      }
+    },
   };
+  name.addEventListener('click', () => detail.open(card));
   node.addEventListener('click', (e) => {
     if (node.classList.contains('open')) return;
     if (e.target.closest('button, input, select, label, a')) return;

@@ -20,6 +20,7 @@ export function createDetail({ win, doc, transition = (fn) => { fn(); } }) {
   const hide = (card) => run(card, () => {
     card.node.classList.remove('open');
     doc.body.classList.remove('detail-open');
+    card.setOpen?.(false);
   });
 
   win.addEventListener('popstate', () => {
@@ -33,7 +34,7 @@ export function createDetail({ win, doc, transition = (fn) => { fn(); } }) {
     hide(card);
   });
   doc.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') api.close();
+    if (e.key === 'Escape' && !e.defaultPrevented) api.close(); // a field that used Esc itself (rename) keeps it
   });
 
   const api = {
@@ -45,9 +46,13 @@ export function createDetail({ win, doc, transition = (fn) => { fn(); } }) {
       if (prev) win.history.replaceState(MARK, '');
       else win.history.pushState(MARK, '');
       run(card, () => {
-        prev?.node.classList.remove('open');
+        if (prev) {
+          prev.node.classList.remove('open');
+          prev.setOpen?.(false);
+        }
         card.node.classList.add('open');
         doc.body.classList.add('detail-open');
+        card.setOpen?.(true);
       });
     },
     close() {

@@ -120,7 +120,10 @@ function nameEditor(obj) {
     };
     input.onkeydown = (e) => {
       if (e.key === 'Enter') finish(true);
-      else if (e.key === 'Escape') finish(false);
+      else if (e.key === 'Escape') {
+        e.preventDefault(); // cancels the rename only, the detail stays open
+        finish(false);
+      }
     };
     input.onblur = () => finish(true);
     node.replaceChildren(input);
@@ -132,6 +135,7 @@ function nameEditor(obj) {
 }
 
 const pct = (v) => `${Math.round(v * 100)}%`;
+const PLAY = '\u25B6\uFE0E'; // text presentation: phones would draw a colour emoji otherwise
 
 /** One send slot: a target select (rebuilt by fill() when effects come and go) and a level slider. */
 function sendRow(engine, m, slot) {
@@ -360,7 +364,7 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
     const play = showsPlay();
     if (global.dataset.state !== String(play)) {
       global.dataset.state = String(play);
-      global.textContent = play ? '▶' : '■';
+      global.textContent = play ? PLAY : '■';
       global.title = play ? 'play all' : 'stop all';
       global.setAttribute('aria-label', global.title);
     }
@@ -379,7 +383,7 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
       const state = module.running ? 'running' : 'stopped';
       if (toggle.dataset.state !== state) {
         toggle.dataset.state = state;
-        toggle.textContent = module.running ? '■' : '▶';
+        toggle.textContent = module.running ? '■' : PLAY;
         toggle.title = module.running ? 'stop' : 'start';
         toggle.setAttribute('aria-label', toggle.title);
       }

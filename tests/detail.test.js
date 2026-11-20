@@ -23,7 +23,7 @@ function env(extra = {}) {
   const card = () => ({ node: fakeNode() });
   return {
     h, doc, detail, card,
-    esc: (key = 'Escape') => keydown.forEach((f) => f({ key })),
+    esc: (key = 'Escape', extra = {}) => keydown.forEach((f) => f({ key, ...extra })),
     userBack: () => history.back(),
   };
 }
@@ -158,4 +158,27 @@ test('state is decided immediately even when the transition applies the change l
   assert.equal(detail.current(), null);
   pending.forEach((fn) => fn());
   assert.ok(!isOpen(a));
+});
+
+test('Escape that something else already handled (e.g. cancelling a rename) does not close the detail', () => {
+  const { detail, card, esc } = env();
+  const a = card();
+  detail.open(a);
+  esc('Escape', { defaultPrevented: true });
+  assert.ok(isOpen(a));
+  assert.equal(detail.current(), a);
+  esc();
+  assert.ok(!isOpen(a));
+});
+
+test('cards are told when they open and close, so they can manage focus', () => {
+  const { detail } = env();
+  const log = [];
+  const mk = (id) => ({ node: fakeNode(), setOpen: (on) => log.push(`${id}:${on}`) });
+  const a = mk('a');
+  const b = mk('b');
+  detail.open(a);
+  detail.open(b);
+  detail.close();
+  assert.deepEqual(log, ['a:true', 'a:false', 'b:true', 'b:false']);
 });
