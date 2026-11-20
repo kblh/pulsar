@@ -6,7 +6,7 @@ import { createCard } from './card.js';
 import { createSlider, createSegmented } from './controls.js';
 import { createEnvelopeEditor } from './envelope.js';
 import { splitRoot, joinRoot } from './hud.js';
-import { FX_TYPES } from './fx.js';
+import { FX_TYPES, FX_NEEDS_WORKLET } from './fx.js';
 import { FX_FIELDS, FX_LABELS } from './fx-fields.js';
 import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
@@ -366,7 +366,12 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
 
   async function addEffect(type) {
     await engine.resume();
-    addFxPanel(engine.addEffect(type));
+    await engine.ready; // the bitcrusher needs its worklet
+    try {
+      addFxPanel(engine.addEffect(type));
+    } catch {
+      /* an effect this browser cannot build (the menu does not offer it) */
+    }
   }
 
   const menu = el('span', { className: 'muted' });
@@ -384,7 +389,7 @@ export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, sc
     b1.onclick = choose(createMelodicModule);
     b2.onclick = choose(createRhythmicModule);
     b3.onclick = choose(createDroneModule);
-    const fxButtons = FX_TYPES.flatMap((type) => {
+    const fxButtons = FX_TYPES.filter((type) => !FX_NEEDS_WORKLET.includes(type) || engine.hasWorklet()).flatMap((type) => {
       const b = el('button', { textContent: `[${FX_LABELS[type]}]` });
       b.onclick = () => { showMenu(false); addEffect(type); };
       return [' ', b];

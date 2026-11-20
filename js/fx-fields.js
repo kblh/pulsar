@@ -23,7 +23,12 @@ export const FX_FIELDS = {
     { key: 'midFreq', min: 200, max: 5000, step: 10, scale: 'log', format: (v) => `${v} Hz` },
     { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
   ],
+  bitcrusher: [
+    { key: 'bits', min: 1, max: 16, step: 1, format: (v) => `${v} bit` },
+    { key: 'rate', min: 1, max: 32, step: 1, format: (v) => `\u00f7${v}` },
+    { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
+  ],
 };
 
 /** The text of the add-menu button. */
-export const FX_LABELS = { delay: 'delay', reverb: 'reverb', eq: 'eq' };
+export const FX_LABELS = { delay: 'delay', reverb: 'reverb', eq: 'eq', bitcrusher: 'crusher' };

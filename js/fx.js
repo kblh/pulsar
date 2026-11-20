@@ -1,4 +1,5 @@
 import { mulberry32 } from './rng.js';
+import { hasWorklet } from './worklet.js';
 
 const RAMP = 0.02; // seconds; parameter changes never jump
 const REBUILD_DEBOUNCE_MS = 150;
@@ -10,12 +11,14 @@ export const FX_DEFAULTS = {
   delay: { time: 350, feedback: 0.4, tone: 4000, return: 0.5, pingpong: 0 },
   reverb: { decay: 2.5, damping: 0.5, return: 0.5, width: 1 },
   eq: { low: 0, mid: 0, high: 0, midFreq: 1000, return: 0.5 },
+  bitcrusher: { bits: 8, rate: 4, return: 0.5 },
 };
 
 export const FX_RANGES = {
   delay: { time: [10, 2000], feedback: [0, 0.9], tone: [200, 12000], return: [0, 1], pingpong: [0, 1] },
   reverb: { decay: [0.3, 10], damping: [0, 1], return: [0, 1], width: [0, 1] },
   eq: { low: [-12, 12], mid: [-12, 12], high: [-12, 12], midFreq: [200, 5000], return: [0, 1] },
+  bitcrusher: { bits: [1, 16], rate: [1, 32], return: [0, 1] },
 };
 
 /** The accepted value for a parameter, or null when the key or value is unusable. */
@@ -298,7 +301,60 @@ export function createEq(ctx, params) {
   };
 }
 
-const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq };
+const CRUSHER_TAIL_MS = 50;
+
+/** Types that cannot be built without the AudioWorklet module (the UI hides them, scene load skips them). */
+export const FX_NEEDS_WORKLET = ['bitcrusher'];
+
+/** Lower bit depth and sample rate on an AudioWorklet; throws when the worklet did not load. */
+export function createBitcrusher(ctx, params) {
+  if (!hasWorklet(ctx)) throw new Error('bitcrusher needs AudioWorklet');
+  const p = accept('bitcrusher', params);
+  const input = ctx.createGain();
+  input.gain.value = 1;
+  const node = new AudioWorkletNode(ctx, 'pulsar-bitcrusher', {
+    numberOfInputs: 1,
+    numberOfOutputs: 1,
+    outputChannelCount: [2],
+    channelCount: 2,
+    channelCountMode: 'explicit',
+    channelInterpretation: 'speakers',
+    parameterData: { bits: p.bits, rate: p.rate },
+  });
+  const ret = ctx.createGain();
+  ret.gain.value = p.return;
+  input.connect(node);
+  node.connect(ret);
+
+  const ramp = (param, v) => param.setTargetAtTime(v, ctx.currentTime, RAMP);
+  let enabled = true;
+  return {
+    type: 'bitcrusher',
+    params: p,
+    input,
+    output: ret,
+    get enabled() { return enabled; },
+    setEnabled(on) {
+      enabled = Boolean(on);
+      ramp(ret.gain, enabled ? p.return : 0);
+    },
+    setParam(key, value) {
+      const v = clampFxParam('bitcrusher', key, value);
+      if (v === null) return;
+      p[key] = v;
+      if (key === 'bits' || key === 'rate') ramp(node.parameters.get(key), v);
+      else if (key === 'return' && enabled) ramp(ret.gain, v);
+    },
+    tailMs: () => CRUSHER_TAIL_MS,
+    dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, CRUSHER_TAIL_MS / 4000),
+    disconnect() {
+      for (const n of [input, node, ret]) n.disconnect();
+      node.port.postMessage('stop');
+    },
+  };
+}
+
+const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq, bitcrusher: createBitcrusher };
 
 /** Every effect type the app knows, in menu order. Defaults, ranges and factories above are keyed by these. */
 export const FX_TYPES = Object.keys(MAKERS);

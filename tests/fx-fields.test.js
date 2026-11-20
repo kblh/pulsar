@@ -33,3 +33,11 @@ test('eq fields show decibels with a sign and the mid frequency in hertz', () =>
   assert.equal(f.midFreq.format(1000), '1000 Hz');
   assert.equal(f.midFreq.scale, 'log');
 });
+
+test('bitcrusher fields: bits as "N bit", rate as a divisor', () => {
+  const f = Object.fromEntries(FX_FIELDS.bitcrusher.map((x) => [x.key, x]));
+  assert.equal(f.bits.format(8), '8 bit');
+  assert.equal(f.rate.format(4), '\u00f74');
+  assert.equal(f.bits.step, 1);
+  assert.equal(f.rate.step, 1);
+});

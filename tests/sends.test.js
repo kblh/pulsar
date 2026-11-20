@@ -184,3 +184,10 @@ test('addEffect creates an equalizer wired to the master', (t) => {
   assert.equal(fx.name, 'eq');
   assert.ok(fx.output.connections.includes(master));
 });
+
+test('addEffect for a bitcrusher without the worklet throws and leaves no effect behind', (t) => {
+  const { routing } = setup(t);
+  assert.throws(() => routing.addEffect('bitcrusher'), /worklet/i);
+  assert.deepEqual(routing.effects, []);
+  assert.equal(routing.addEffect('delay').id, 'fx1'); // the failed attempt did not use an id
+});

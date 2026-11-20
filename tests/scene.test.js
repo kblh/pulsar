@@ -213,3 +213,10 @@ test('an equalizer round-trips through a scene and out-of-range bands are clampe
   const wild = validateScene({ version: 1, effects: [{ type: 'eq', params: { low: 99, high: -99, midFreq: 1 } }], modules: [] }).scene;
   assert.deepEqual(wild.effects[0].params, { low: 12, high: -12, midFreq: 200 });
 });
+
+test('validateScene accepts a bitcrusher and clamps its parameters', () => {
+  const { scene } = validateScene({ version: 1, effects: [{ type: 'bitcrusher', enabled: false, params: { bits: 99, rate: 0, return: 0.3, hax: 1 } }], modules: [] });
+  assert.equal(scene.effects[0].type, 'bitcrusher');
+  assert.deepEqual(scene.effects[0].params, { bits: 16, rate: 1, return: 0.3 });
+  assert.equal(scene.effects[0].enabled, false);
+});

@@ -69,6 +69,7 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
 
   async function doLoad(entry) {
     await engine.resume();
+    await engine.ready; // a scene with a bitcrusher needs the worklet
     const scene = store.get(entry.id);
     if (!scene) {
       say(`"${entry.name}" could not be loaded`);

@@ -1,8 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, makeImpulse, createDelay, createReverb, createEq } from '../js/fx.js';
+import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, makeImpulse, createDelay, createReverb, createEq, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
 import { mulberry32 } from '../js/rng.js';
 import { stubCtx } from './helpers/stub-ctx.js';
+import { markWorkletLoaded } from '../js/worklet.js';
+
+// A stand-in for AudioWorkletNode that records what the effect does to it.
+const workletNodes = [];
+class FakeWorkletNode {
+  constructor(ctx, name, options) {
+    this.name = name;
+    this.options = options;
+    this.connections = [];
+    this.disconnected = 0;
+    this.messages = [];
+    const param = () => { const calls = []; return { calls, setTargetAtTime: (...a) => calls.push(['target', ...a]), set value(v) { calls.push(['value', v]); } }; };
+    this.parameters = new Map([['bits', param()], ['rate', param()]]);
+    this.port = { postMessage: (m) => this.messages.push(m) };
+    workletNodes.push(this);
+  }
+  connect(x) { this.connections.push(x); return x; }
+  disconnect() { this.disconnected++; }
+}
+globalThis.AudioWorkletNode = FakeWorkletNode;
+const workletCtx = () => { const ctx = stubCtx(); markWorkletLoaded(ctx); return ctx; };
 
 /** True when `to` can be reached from `from` through recorded connections. */
 function reaches(from, to, seen = new Set()) {
@@ -221,14 +242,14 @@ test('bypass: a reverb rebuild while disabled leaves the muted return alone', (t
 });
 
 test('the registry lists every effect type with defaults, ranges and a factory', () => {
-  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq']);
+  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq', 'bitcrusher']);
   for (const type of FX_TYPES) {
     assert.deepEqual(Object.keys(FX_RANGES[type]).sort(), Object.keys(FX_DEFAULTS[type]).sort(), type);
     for (const [key, v] of Object.entries(FX_DEFAULTS[type])) {
       const [lo, hi] = FX_RANGES[type][key];
       assert.ok(v >= lo && v <= hi, `${type}.${key} default ${v} outside ${lo}-${hi}`);
     }
-    const fx = createEffect(stubCtx(), type);
+    const fx = createEffect(workletCtx(), type);
     assert.equal(fx.type, type);
     assert.equal(fx.enabled, true);
     for (const fn of ['setParam', 'setEnabled', 'tailMs', 'dispose', 'disconnect']) assert.equal(typeof fx[fn], 'function', `${type}.${fn}`);
@@ -354,4 +375,72 @@ test('eq setParam ramps band gains and the mid frequency, never writes .value af
 test('eq tail is short and finite', () => {
   const t = createEq(stubCtx()).tailMs();
   assert.ok(Number.isFinite(t) && t > 0 && t <= 500);
+});
+
+test('bitcrusher: defaults, ranges and clamping', () => {
+  assert.deepEqual(FX_DEFAULTS.bitcrusher, { bits: 8, rate: 4, return: 0.5 });
+  assert.equal(clampFxParam('bitcrusher', 'bits', 99), 16);
+  assert.equal(clampFxParam('bitcrusher', 'bits', 0), 1);
+  assert.equal(clampFxParam('bitcrusher', 'rate', 0), 1);
+  assert.equal(clampFxParam('bitcrusher', 'rate', 999), 32);
+  for (const bad of ['abc', NaN, null, undefined, '']) assert.equal(clampFxParam('bitcrusher', 'bits', bad), null);
+  assert.deepEqual(FX_NEEDS_WORKLET, ['bitcrusher']);
+});
+
+test('bitcrusher graph: input -> worklet node -> return, stereo both ways, start values as options', () => {
+  const ctx = workletCtx();
+  const before = workletNodes.length;
+  const fx = createBitcrusher(ctx, { bits: 5, rate: 3, return: 0.7 });
+  const node = workletNodes[before];
+  assert.equal(node.name, 'pulsar-bitcrusher');
+  assert.deepEqual(node.options.parameterData, { bits: 5, rate: 3 });
+  assert.deepEqual(node.options.outputChannelCount, [2]);
+  assert.equal(node.options.channelCount, 2);
+  assert.equal(node.options.channelCountMode, 'explicit');
+  assert.ok(fx.input.connections.includes(node));
+  assert.ok(node.connections.includes(fx.output));
+  assert.equal(fx.type, 'bitcrusher');
+  assert.equal(fx.enabled, true);
+});
+
+test('bitcrusher setParam ramps the worklet parameters and the return, no .value afterwards', () => {
+  const ctx = workletCtx();
+  const before = workletNodes.length;
+  const fx = createBitcrusher(ctx);
+  const node = workletNodes[before];
+  fx.setParam('bits', 4);
+  fx.setParam('rate', 99);
+  assert.deepEqual(node.parameters.get('bits').calls.at(-1).slice(0, 2), ['target', 4]);
+  assert.deepEqual(node.parameters.get('rate').calls.at(-1).slice(0, 2), ['target', 32]);
+  assert.equal(node.parameters.get('bits').calls.filter((c) => c[0] === 'value').length, 0);
+  fx.setEnabled(false);
+  assert.deepEqual(fx.output.gain.calls.at(-1).slice(0, 2), ['target', 0]);
+  fx.setParam('return', 0.2);
+  assert.equal(fx.params.return, 0.2);
+  assert.deepEqual(fx.output.gain.calls.at(-1).slice(0, 2), ['target', 0]); // still muted
+  fx.setEnabled(true);
+  assert.deepEqual(fx.output.gain.calls.at(-1).slice(0, 2), ['target', 0.2]);
+  fx.setParam('bits', 'abc');
+  assert.equal(fx.params.bits, 4);
+});
+
+test('bitcrusher dispose fades the return, disconnect frees every node including the worklet node', () => {
+  const ctx = workletCtx();
+  const before = workletNodes.length;
+  const fx = createBitcrusher(ctx);
+  const node = workletNodes[before];
+  assert.ok(Number.isFinite(fx.tailMs()) && fx.tailMs() <= 500);
+  fx.dispose();
+  assert.deepEqual(fx.output.gain.calls.at(-1).slice(0, 2), ['target', 0]);
+  fx.disconnect();
+  assert.ok(node.disconnected >= 1);
+  assert.deepEqual(node.messages, ['stop']); // lets the processor end
+  for (const n of ctx.nodes) assert.ok(n.disconnected >= 1, `${n.kind} not disconnected`);
+});
+
+test('without the worklet only the bitcrusher is unavailable', () => {
+  const ctx = stubCtx(); // never marked as loaded
+  assert.throws(() => createEffect(ctx, 'bitcrusher'), /worklet/i);
+  assert.throws(() => createBitcrusher(ctx), /worklet/i);
+  for (const type of FX_TYPES.filter((t) => !FX_NEEDS_WORKLET.includes(t))) assert.equal(createEffect(ctx, type).type, type);
 });

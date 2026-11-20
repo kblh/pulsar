@@ -151,3 +151,11 @@ test('applyScene bypasses only the effects saved as disabled', () => {
   applyScene(e, scene([], [{ type: 'delay', params: {} }, { type: 'reverb', enabled: false, params: {} }]), fakeUi(e));
   assert.deepEqual(e.log.filter((l) => l.startsWith('fxEnabled')), ['fxEnabled:fx2:false']);
 });
+
+test('applyScene skips a bitcrusher the engine cannot build and still builds the rest', () => {
+  const e = fakeEngine({ failAddEffect: ['bitcrusher'] });
+  const { skipped } = applyScene(e, scene([mod('melodic')], [{ type: 'delay', params: {} }, { type: 'bitcrusher', params: {} }]), fakeUi(e));
+  assert.deepEqual(skipped, ['effect 2 (bitcrusher)']);
+  assert.deepEqual(e.effects.map((f) => f.type), ['delay']);
+  assert.equal(e.modules.length, 1);
+});

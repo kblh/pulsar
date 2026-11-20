@@ -2,9 +2,11 @@ import { createClock } from './clock.js';
 import { createTransport } from './transport.js';
 import { connectMix, clampVolume, clampPan } from './mix.js';
 import { createRouting } from './sends.js';
+import { loadWorklet, hasWorklet } from './worklet.js';
 
 export function createEngine() {
   const ctx = new AudioContext();
+  const ready = loadWorklet(ctx).then(() => {}); // never rejects: without the worklet only the bitcrusher is missing
   const master = ctx.createGain();
   master.gain.value = 0.8;
   master.connect(ctx.destination);
@@ -19,6 +21,8 @@ export function createEngine() {
   return {
     ctx,
     modules,
+    ready,
+    hasWorklet: () => hasWorklet(ctx),
     effects: routing.effects,
     addEffect: routing.addEffect,
     setFxParam: routing.setFxParam,
