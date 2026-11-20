@@ -24,7 +24,7 @@ class PulsarBitcrusher extends AudioWorkletProcessor {
     const bits = parameters.bits[0];
     const rate = parameters.rate[0];
     for (let ch = 0; ch < output.length; ch++) {
-      const crusher = (this.crushers[ch] ??= createCrusher({ bits, rate }));
+      const crusher = (this.crushers[ch] ??= createCrusher({ bits, rate, sampleRate }));
       crusher.set({ bits, rate });
       const src = input[ch] ?? input[0];
       const dst = output[ch];

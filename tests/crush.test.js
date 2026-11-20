@@ -53,7 +53,8 @@ test('rate N holds every Nth sample', () => {
 test('set changes bits and rate on the fly and sanitises them', () => {
   const c = createCrusher({ bits: 16, rate: 1 });
   c.set({ bits: 1, rate: 2 });
-  assert.ok([-1, 0, 1].includes(c.process(0.9)));
+  const out = c.process(0.9);
+  assert.ok([-0.9, 0, 0.9].some((v) => Math.abs(out - v) < 1e-9), `got ${out}`); // levels are relative to the signal peak
   c.set({ bits: NaN, rate: 0 }); // unusable: fall back to the safe ends, never throw or stall
   for (let i = 0; i < 10; i++) assert.ok(Number.isFinite(c.process(0.5)));
 });
@@ -64,4 +65,51 @@ test('two crushers do not share the held sample', () => {
   a.process(0.5);
   a.process(0.6);
   assert.equal(b.process(-0.5), -0.5);
+});
+
+const SR = 44100;
+const sine = (amp, n, hz = 440, from = 0) => Array.from({ length: n }, (_, i) => amp * Math.sin((2 * Math.PI * hz * (i + from)) / SR));
+const rms = (a) => Math.sqrt(a.reduce((m, x) => m + x * x, 0) / a.length);
+const run = (c, input) => input.map((x) => c.process(x));
+
+test('a quiet signal is still crushed audibly at every bit depth (levels follow the signal peak)', () => {
+  // A melodic note peaks at about 0.07 on a default send; fixed full-scale levels would zero it at 1-3 bits.
+  const input = sine(0.07, 4410);
+  for (let bits = 1; bits <= 16; bits++) {
+    const c = createCrusher({ bits, rate: 1, sampleRate: SR });
+    const out = run(c, input).slice(2000);
+    assert.ok(rms(out) > 0.3 * rms(input.slice(2000)), `${bits} bit: output rms ${rms(out)}`);
+  }
+});
+
+test('the crush does not depend on how loud the signal is', () => {
+  const shape = (amp) => {
+    const out = run(createCrusher({ bits: 2, rate: 1, sampleRate: SR }), sine(amp, 8820)).slice(4410);
+    const peak = Math.max(...out.map(Math.abs));
+    return out.map((x) => x / peak);
+  };
+  const quiet = shape(0.05);
+  const loud = shape(0.5);
+  const diff = rms(quiet.map((x, i) => x - loud[i]));
+  assert.ok(diff < 0.15, `normalised waveforms differ by rms ${diff}`);
+});
+
+test('after a loud passage a quiet one is crushed audibly again within a second', () => {
+  const c = createCrusher({ bits: 2, rate: 1, sampleRate: SR });
+  run(c, sine(1, 8820));
+  const quiet = sine(0.07, SR * 1.2, 440, 8820);
+  const out = run(c, quiet);
+  const tail = out.slice(-4410);
+  assert.ok(rms(tail) > 0.3 * rms(quiet.slice(-4410)), `tail rms ${rms(tail)}`);
+});
+
+test('silence stays exactly silent after any signal, and the output never exceeds the recent input peak', () => {
+  for (const bits of [1, 4, 8, 16]) {
+    const c = createCrusher({ bits, rate: 1, sampleRate: SR });
+    const loud = sine(0.6, 4410);
+    const out = run(c, loud);
+    assert.ok(Math.max(...out.map(Math.abs)) <= 0.6 + 1e-9, `${bits} bit peak`);
+    for (let i = 0; i < SR * 3; i++) c.process(0);
+    for (let i = 0; i < 64; i++) assert.equal(c.process(0), 0, `${bits} bit silence`);
+  }
 });
