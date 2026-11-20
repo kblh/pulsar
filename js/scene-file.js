@@ -7,13 +7,13 @@ const MAX_FILENAME = 80;
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 
 /** A file name that cannot escape a folder or carry markup: only letters, digits, . _ - and space survive. */
-export function exportFilename(name, suffix = '.pulsar.json') {
+export function exportFilename(name, suffix = '.pulsar.json', fallback = 'scene') {
   const base = String(name ?? '')
     .replace(/[^\p{L}\p{N}._ -]+/gu, '_')
     .replace(/^[.\s]+/, '')
     .trim()
     .slice(0, MAX_FILENAME);
-  return `${base || 'scene'}${suffix}`;
+  return `${base || fallback}${suffix}`;
 }
 
 export function sceneToFile(name, scene) {

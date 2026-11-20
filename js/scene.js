@@ -12,7 +12,7 @@ const SLOTS = 3;
 export const MAX_MODULES = 64;
 export const MAX_EFFECTS = 32;
 const MAX_PATTERN = 64;
-const DEFAULT_SEND_LEVEL = 0.3;
+export const DEFAULT_SEND_LEVEL = 0.3;
 const NUMBER_KEYS = { melodic: ['bpm', 'swing', 'randomize', 'rhythmMod'], rhythmic: ['bpm', 'swing', 'rhythmMod'], drone: ['rate', 'maxExtra', 'fade'] };
 
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
@@ -26,6 +26,18 @@ export function cleanName(value, fallback) {
   return value.trim().slice(0, NAME_MAX).trim() || fallback;
 }
 
+/** One module as plain data, without its sends (those point at effects of the scene). */
+export function serializeModule(m, stoppedByTransport = () => false) {
+  return {
+    type: m.type,
+    name: m.name ?? m.type,
+    params: clone(m.params),
+    volume: m.volume ?? 1,
+    pan: m.pan ?? 0,
+    running: m.running || stoppedByTransport(m), // [stop all] is not a hand-made stop
+  };
+}
+
 /** Plain-data snapshot of what the user set up (not the evolved state). `stoppedByTransport(m)` marks modules only [stop all] stopped. */
 export function serializeScene({ modules, effects, stoppedByTransport = () => false, sequence = null }) {
   const index = new Map(effects.map((fx, i) => [fx.id, i]));
@@ -35,12 +47,7 @@ export function serializeScene({ modules, effects, stoppedByTransport = () => fa
     version: 1,
     effects: effects.map((fx) => ({ type: fx.type, name: fx.name ?? fx.type, enabled: fx.enabled !== false, params: clone(fx.params) })),
     modules: modules.map((m) => ({
-      type: m.type,
-      name: m.name ?? m.type,
-      params: clone(m.params),
-      volume: m.volume ?? 1,
-      pan: m.pan ?? 0,
-      running: m.running || stoppedByTransport(m), // [stop all] is not a hand-made stop
+      ...serializeModule(m, stoppedByTransport),
       sends: (m.sends ?? []).map((s) => ({ fx: index.has(s.fx) ? index.get(s.fx) : null, level: s.level })),
     })),
     // Members are saved as positions in `modules`, so the scene does not depend on module ids.
@@ -122,6 +129,31 @@ function cleanModuleParams(type, p) {
   return out;
 }
 
+/**
+ * One module from untrusted data, or null when it is not an object or of an unknown type.
+ * `fxRemap` turns saved effect positions into positions of the scene being built; without one every send is empty.
+ */
+export function cleanModule(m, fxRemap = new Map()) {
+  if (!isObj(m) || !MODULE_TYPES.includes(m.type)) return null;
+  const given = Array.isArray(m.sends) ? m.sends.slice(0, SLOTS) : [];
+  const sends = Array.from({ length: SLOTS }, (_, s) => {
+    const x = isObj(given[s]) ? given[s] : {};
+    return {
+      fx: Number.isInteger(x.fx) && fxRemap.has(x.fx) ? fxRemap.get(x.fx) : null,
+      level: isNum(x.level) ? clampLevel(x.level) : DEFAULT_SEND_LEVEL,
+    };
+  });
+  return {
+    type: m.type,
+    name: cleanName(m.name, m.type),
+    params: cleanModuleParams(m.type, m.params),
+    volume: isNum(m.volume) ? clampVolume(m.volume) : 1,
+    pan: isNum(m.pan) ? clampPan(m.pan) : 0,
+    running: typeof m.running === 'boolean' ? m.running : true,
+    sends,
+  };
+}
+
 /** Normalizes untrusted scene data; unusable parts are dropped and reported in `problems`. */
 export function validateScene(data) {
   const problems = [];
@@ -160,28 +192,13 @@ export function validateScene(data) {
       modulesCapped = true;
       return;
     }
-    if (!isObj(m) || !MODULE_TYPES.includes(m.type)) {
+    const clean = cleanModule(m, remap);
+    if (!clean) {
       problems.push(`module ${i + 1}: unknown type`);
       return;
     }
-    const given = Array.isArray(m.sends) ? m.sends.slice(0, SLOTS) : [];
-    const sends = Array.from({ length: SLOTS }, (_, s) => {
-      const x = isObj(given[s]) ? given[s] : {};
-      return {
-        fx: Number.isInteger(x.fx) && remap.has(x.fx) ? remap.get(x.fx) : null,
-        level: isNum(x.level) ? clampLevel(x.level) : DEFAULT_SEND_LEVEL,
-      };
-    });
     moduleRemap.set(i, modules.length);
-    modules.push({
-      type: m.type,
-      name: cleanName(m.name, m.type),
-      params: cleanModuleParams(m.type, m.params),
-      volume: isNum(m.volume) ? clampVolume(m.volume) : 1,
-      pan: isNum(m.pan) ? clampPan(m.pan) : 0,
-      running: typeof m.running === 'boolean' ? m.running : true,
-      sends,
-    });
+    modules.push(clean);
   });
 
   if (!effects.length && !modules.length) return { scene: null, problems: [...problems, 'scene is empty'] };

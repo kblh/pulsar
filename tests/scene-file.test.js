@@ -155,3 +155,9 @@ test('a scene file keeps its sequence and a hostile one never throws', () => {
   const junk = parseSceneFile(JSON.stringify({ pulsar: 'scene', name: 'z', scene: { ...sc, sequence: 'x' } }), 'z');
   assert.ok(!('sequence' in junk.entries[0].scene));
 });
+
+test('exportFilename takes a fallback for an empty name', () => {
+  assert.equal(exportFilename('', '.x.json'), 'scene.x.json');
+  assert.equal(exportFilename('', '.x.json', 'module'), 'module.x.json');
+  assert.equal(exportFilename('a/b', '.x.json', 'module'), 'a_b.x.json');
+});
