@@ -11,14 +11,36 @@ body {
   margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
   font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
-header { margin-bottom: 16px; color: var(--accent); }
+header.bar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+  margin: -16px -16px 16px; padding: 4px 16px;
+  background: var(--bg); border-bottom: 1px solid var(--line); color: var(--accent);
+}
+header.bar button { min-height: 44px; min-width: 44px; }
 .prompt { color: var(--dim); }
 .cursor { animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
-main { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
-.panel { border: 1px solid var(--line); background: var(--panel); padding: 12px; }
-.panel h2 { margin: 0 0 8px; font-size: 14px; font-weight: normal; color: var(--accent); display: flex; gap: 8px; }
-.panel h2 .spacer { flex: 1; }
+.section { margin-bottom: 24px; }
+.section:has(.cards:empty) { display: none; }
+.section-title { margin: 0 0 8px; font-size: 12px; font-weight: normal; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
+.cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); align-items: start; }
+.card { border: 1px solid var(--line); background: var(--panel); padding: 0 12px; }
+.card-head { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.card-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
+.card-volume { width: 90px; flex: none; }
+.card-actions { display: flex; align-items: center; gap: 8px; }
+.card .play, .card .check { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.card .check input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.card-body { padding-bottom: 12px; }
+.card:not(.open) { cursor: pointer; }
+.card:not(.open) .card-body, .card:not(.open) .card-name-edit, .card:not(.open) .card-actions { display: none; }
+.card.open .card-name { display: none; }
+.card.open .card-title { white-space: normal; overflow: visible; }
+.card.open { position: fixed; inset: 0; z-index: 20; overflow: auto; padding: 0 16px 24px; background: var(--bg); border: 0; }
+.card.open .card-head { position: sticky; top: 0; z-index: 1; background: var(--bg); border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.fx-controls.bypassed { opacity: 0.5; }
+body.detail-open { overflow: hidden; }
 button {
   font: inherit; color: var(--fg); background: none; border: 0; cursor: pointer; padding: 0;
 }
@@ -39,12 +61,11 @@ input[type=range] { flex: 1; accent-color: var(--accent); padding: 0; }
 .grid .step.on { color: var(--fg); }
 .grid .step.off { color: var(--dim); }
 .grid .step.now { background: var(--accent); color: var(--bg); }
-#adder { margin-top: 16px; }
 #adder button { color: var(--accent); }
 .muted { color: var(--dim); }
 #scenes { margin-left: 8px; }
 #scenes button { color: var(--accent); }
-#scene-panel { margin-bottom: 16px; max-width: 480px; }
+#scene-panel { margin-bottom: 16px; max-width: 480px; max-height: 60vh; overflow: auto; }
 #scene-panel .spacer { flex: 1; }
 .name-btn, .scene-name { color: var(--accent); }
 .name-btn:hover, .scene-name:hover { text-decoration: underline; }

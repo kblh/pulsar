@@ -2,6 +2,8 @@ import { SCALES } from './scales.js';
 import { WAVES, ROOTS } from './options.js';
 import { cleanName, NAME_MAX } from './scene.js';
 import { mountScenes } from './scenes-ui.js';
+import { createCard } from './card.js';
+import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 
 
@@ -95,7 +97,6 @@ function melodicControls(m) {
 function mixRows(engine, m) {
   const panText = (v) => (Math.abs(v) < 0.05 ? 'C' : `${v < 0 ? 'L' : 'R'}${Math.round(Math.abs(v) * 100)}`);
   return [
-    row('volume', ...range(m.volume ?? 1, 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`, (v) => engine.setVolume(m, v))),
     row('pan', ...range(m.pan ?? 0, -1, 1, 0.05, panText, (v) => engine.setPan(m, v))),
   ];
 }
@@ -210,40 +211,68 @@ function rhythmicControls(m) {
   ];
 }
 
-export function mountUi({ engine, modulesEl, adderEl, transportEl, scenesEl, scenePanelEl, store }) {
-  const panels = new Map();
-  const fxNodes = new Map(); // effect id -> panel node
+export function mountUi({ engine, effectsEl, modulesEl, adderEl, transportEl, scenesEl, scenePanelEl, store }) {
+  const panels = new Map(); // module id -> { card, rows, module, toggle }
+  const fxCards = new Map(); // effect id -> { card, fx, bypass, controls }
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const detail = createDetail({
+    win: window,
+    doc: document,
+    transition: (fn) => {
+      if (!document.startViewTransition || reduced.matches) return void fn();
+      const t = document.startViewTransition(fn);
+      t.ready.catch(() => {}); // a newer transition skipping this one rejects `ready`; that is fine
+      return t;
+    },
+  });
   const sendFills = new Map(); // module id -> fill functions of its send selects
   let effectsSig = '';
 
   function removeFxPanel(id) {
     engine.removeEffect(id);
-    fxNodes.get(id)?.remove();
-    fxNodes.delete(id);
+    const entry = fxCards.get(id);
+    if (entry && detail.current() === entry.card) detail.close();
+    entry?.card.node.remove();
+    fxCards.delete(id);
   }
 
   function removeModulePanel(id) {
     engine.removeModule(id);
     sendFills.delete(id);
-    panels.get(id)?.node.remove();
+    const entry = panels.get(id);
+    if (entry && detail.current() === entry.card) detail.close();
+    entry?.card.node.remove();
     panels.delete(id);
   }
 
   function addFxPanel(fx) {
-    const remove = el('button', { textContent: '[x]' });
-    const node = el('section', { className: 'panel' },
-      el('h2', {}, `${fx.id} `, nameEditor(fx), el('span', { className: 'spacer' }), remove),
-      ...fxControls(engine, fx));
+    const bypass = el('input', { type: 'checkbox', checked: fx.enabled, title: 'on / bypass' });
+    bypass.setAttribute('aria-label', 'effect on');
+    bypass.onchange = () => engine.setFxEnabled(fx, bypass.checked);
+    const remove = el('button', { textContent: '[remove]', type: 'button' });
     remove.onclick = () => removeFxPanel(fx.id);
-    fxNodes.set(fx.id, node);
-    modulesEl.append(node);
+    const controls = el('div', { className: 'fx-controls' }, ...fxControls(engine, fx));
+    const card = createCard({
+      kind: 'effect',
+      title: `${fx.id} ${fx.name}`,
+      nameEditor: el('span', {}, `${fx.id} `, nameEditor(fx)),
+      lead: [el('label', { className: 'check' }, bypass)],
+      actions: [remove],
+      body: [controls],
+      detail,
+    });
+    fxCards.set(fx.id, { card, fx, bypass, controls });
+    effectsEl.append(card.node);
   }
 
   function addPanel(m) {
-    const toggle = el('button', { textContent: '[stop]' });
+    const toggle = el('button', { className: 'play', type: 'button' });
     toggle.onclick = () => engine.toggle(m);
-    const remove = el('button', { textContent: '[x]' });
+    const remove = el('button', { textContent: '[remove]', type: 'button' });
     remove.onclick = () => removeModulePanel(m.id);
+    const [volume] = range(m.volume ?? 1, 0, 1, 0.01, pct, (v) => engine.setVolume(m, v));
+    volume.className = 'card-volume';
+    volume.setAttribute('aria-label', 'volume');
 
     let rows;
     if (m.type === 'drone') {
@@ -268,15 +297,18 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl, scenesEl, sce
       ...mixRows(engine, m),
       ...sends.map((x) => x.row),
     ];
-    const node = el(
-      'section',
-      { className: 'panel' },
-      el('h2', {}, `#${m.id} `, nameEditor(m), el('span', { className: 'spacer' }), toggle, remove),
-      ...controls,
-      grid,
-    );
-    modulesEl.append(node);
-    panels.set(m.id, { node, rows, module: m, toggle });
+    const card = createCard({
+      kind: 'module',
+      title: `#${m.id} ${m.name}`,
+      nameEditor: el('span', {}, `#${m.id} `, nameEditor(m)),
+      lead: [toggle],
+      quick: [volume],
+      actions: [remove],
+      body: [...controls, grid],
+      detail,
+    });
+    modulesEl.append(card.node);
+    panels.set(m.id, { card, rows, module: m, toggle });
   }
 
   async function add(factory) {
@@ -317,7 +349,7 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl, scenesEl, sce
 
   // Offer [play all] whenever nothing is actually running (or the transport was stopped).
   const showsPlay = () => engine.isStopped() || (engine.hasModules() && !engine.anyRunning());
-  const global = el('button', { textContent: '[stop all]' });
+  const global = el('button', { className: 'play', type: 'button' });
   global.onclick = async () => {
     await engine.resume();
     if (showsPlay()) engine.playAll(); else engine.stopAll();
@@ -325,15 +357,33 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl, scenesEl, sce
   transportEl.append(global);
 
   function frame() {
-    global.textContent = showsPlay() ? '[play all]' : '[stop all]';
+    const play = showsPlay();
+    if (global.dataset.state !== String(play)) {
+      global.dataset.state = String(play);
+      global.textContent = play ? '▶' : '■';
+      global.title = play ? 'play all' : 'stop all';
+      global.setAttribute('aria-label', global.title);
+    }
     const sig = engine.effects.map((fx) => `${fx.id}:${fx.name}`).join();
     if (sig !== effectsSig) {
       effectsSig = sig;
       for (const fills of sendFills.values()) fills.forEach((f) => f());
     }
-    for (const { rows, module, toggle } of panels.values()) {
-      toggle.textContent = module.running ? '[stop]' : '[start]';
-      rows.forEach((r) => r.update(module.playhead));
+    for (const { card, fx, bypass, controls } of fxCards.values()) {
+      card.setTitle(`${fx.id} ${fx.name}`);
+      bypass.checked = fx.enabled;
+      controls.classList.toggle('bypassed', !fx.enabled);
+    }
+    for (const { card, rows, module, toggle } of panels.values()) {
+      card.setTitle(`#${module.id} ${module.name}`);
+      const state = module.running ? 'running' : 'stopped';
+      if (toggle.dataset.state !== state) {
+        toggle.dataset.state = state;
+        toggle.textContent = module.running ? '■' : '▶';
+        toggle.title = module.running ? 'stop' : 'start';
+        toggle.setAttribute('aria-label', toggle.title);
+      }
+      if (card.node.classList.contains('open')) rows.forEach((r) => r.update(module.playhead));
     }
     requestAnimationFrame(frame);
   }
@@ -342,6 +392,7 @@ export function mountUi({ engine, modulesEl, adderEl, transportEl, scenesEl, sce
   if (scenesEl && scenePanelEl && store) {
     const sceneUi = {
       clear() {
+        detail.close();
         for (const m of [...engine.modules]) removeModulePanel(m.id);
         for (const fx of [...engine.effects]) removeFxPanel(fx.id);
       },

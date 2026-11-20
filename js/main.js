@@ -14,6 +14,7 @@ mountUi({
   scenesEl: document.getElementById('scenes'),
   scenePanelEl: document.getElementById('scene-panel'),
   engine: createEngine(),
+  effectsEl: document.getElementById('effects'),
   modulesEl: document.getElementById('modules'),
   adderEl: document.getElementById('adder'),
   transportEl: document.getElementById('transport'),

@@ -9,10 +9,17 @@
   <meta name="theme-color" content="#0b0d0b">
 </head>
 <body>
-  <header><span class="prompt">$</span> pulsar <span class="cursor">_</span> <span id="transport"></span> <span id="scenes"></span></header>
+  <header class="bar">
+    <span class="brand"><span class="prompt">$</span> pulsar <span class="cursor">_</span></span>
+    <span id="transport"></span>
+    <span id="scenes"></span>
+    <span id="adder"></span>
+  </header>
   <div id="scene-panel"></div>
-  <main id="modules"></main>
-  <footer id="adder"></footer>
+  <main>
+    <section class="section"><h2 class="section-title">effects</h2><div id="effects" class="cards"></div></section>
+    <section class="section"><h2 class="section-title">modules</h2><div id="modules" class="cards"></div></section>
+  </main>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
