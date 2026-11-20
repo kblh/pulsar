@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, makeImpulse, createDelay, createReverb } from '../js/fx.js';
+import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, makeImpulse, createDelay, createReverb, createEq } from '../js/fx.js';
 import { mulberry32 } from '../js/rng.js';
 import { stubCtx } from './helpers/stub-ctx.js';
 
@@ -134,7 +134,7 @@ test('reverb coalesces rapid changes into one rebuild', (t) => {
 
 test('dispose ramps return to 0, disconnect disconnects everything', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  for (const make of [createDelay, createReverb]) {
+  for (const make of [createDelay, createReverb, createEq]) {
     const ctx = stubCtx();
     const fx = make(ctx);
     fx.setParam('decay', 4);
@@ -180,7 +180,7 @@ test('delay lowpass in the feedback loop has no resonance peak that makes the lo
 const lastTarget = (g) => g.gain.calls.filter((c) => c[0] === 'target').at(-1);
 
 test('bypass: setEnabled ramps the return to 0 and back without touching .value', () => {
-  for (const make of [createDelay, createReverb]) {
+  for (const make of [createDelay, createReverb, createEq]) {
     const ctx = stubCtx();
     const fx = make(ctx, { return: 0.6 });
     assert.equal(fx.enabled, true);
@@ -196,7 +196,7 @@ test('bypass: setEnabled ramps the return to 0 and back without touching .value'
 });
 
 test('bypass: changing return while disabled stays muted and applies on enable', () => {
-  for (const make of [createDelay, createReverb]) {
+  for (const make of [createDelay, createReverb, createEq]) {
     const ctx = stubCtx();
     const fx = make(ctx);
     fx.setEnabled(false);
@@ -221,7 +221,7 @@ test('bypass: a reverb rebuild while disabled leaves the muted return alone', (t
 });
 
 test('the registry lists every effect type with defaults, ranges and a factory', () => {
-  assert.deepEqual(FX_TYPES, ['delay', 'reverb']);
+  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq']);
   for (const type of FX_TYPES) {
     assert.deepEqual(Object.keys(FX_RANGES[type]).sort(), Object.keys(FX_DEFAULTS[type]).sort(), type);
     for (const [key, v] of Object.entries(FX_DEFAULTS[type])) {
@@ -301,4 +301,57 @@ test('reverb width: 1 keeps the channels apart, 0 makes the output mono, changes
   assert.equal(fx.params.width, 0.5);
   assert.equal(ctx.nodes.filter((n) => n.kind === 'pan').flatMap((n) => n.pan.calls).filter((c) => c[0] === 'value').length, 2);
   assert.ok(valueCalls(ctx).length === before.length);
+});
+
+test('eq: defaults, ranges and clamping', () => {
+  assert.deepEqual(FX_DEFAULTS.eq, { low: 0, mid: 0, high: 0, midFreq: 1000, return: 0.5 });
+  for (const band of ['low', 'mid', 'high']) {
+    assert.equal(clampFxParam('eq', band, 99), 12, band);
+    assert.equal(clampFxParam('eq', band, -99), -12, band);
+    assert.equal(clampFxParam('eq', band, 3.5), 3.5, band);
+    assert.equal(clampFxParam('eq', band, 'abc'), null, band);
+  }
+  assert.equal(clampFxParam('eq', 'midFreq', 5), 200);
+  assert.equal(clampFxParam('eq', 'midFreq', 99999), 5000);
+  for (const bad of [NaN, null, undefined, '']) assert.equal(clampFxParam('eq', 'midFreq', bad), null);
+});
+
+test('eq graph: input -> low shelf -> peaking mid -> high shelf -> return, per-channel biquads', () => {
+  const ctx = stubCtx();
+  const fx = createEq(ctx, { low: 6, mid: -3, high: 2, midFreq: 2500 });
+  const [low, mid, high] = ctx.nodes.filter((n) => n.kind === 'biquad');
+  assert.deepEqual([low.type, mid.type, high.type], ['lowshelf', 'peaking', 'highshelf']);
+  assert.ok(fx.input.connections.includes(low));
+  assert.ok(low.connections.includes(mid));
+  assert.ok(mid.connections.includes(high));
+  assert.ok(high.connections.includes(fx.output));
+  assert.deepEqual([low.gain, mid.gain, high.gain].map((g) => g.calls.find((c) => c[0] === 'value')[1]), [6, -3, 2]);
+  assert.equal(mid.frequency.calls.find((c) => c[0] === 'value')[1], 2500);
+  assert.equal(fx.type, 'eq');
+  assert.equal(fx.enabled, true);
+});
+
+test('eq setParam ramps band gains and the mid frequency, never writes .value afterwards', () => {
+  const ctx = stubCtx();
+  const fx = createEq(ctx);
+  const [low, mid, high] = ctx.nodes.filter((n) => n.kind === 'biquad');
+  const before = valueCalls(ctx);
+  fx.setParam('low', 6);
+  fx.setParam('mid', -3);
+  fx.setParam('high', 99);
+  fx.setParam('midFreq', 2000);
+  const last = (param) => param.calls.filter((c) => c[0] === 'target').at(-1).slice(0, 2);
+  assert.deepEqual(last(low.gain), ['target', 6]);
+  assert.deepEqual(last(mid.gain), ['target', -3]);
+  assert.deepEqual(last(high.gain), ['target', 12]);
+  assert.deepEqual(last(mid.frequency), ['target', 2000]);
+  assert.deepEqual(valueCalls(ctx), before);
+  assert.equal(fx.params.high, 12);
+  fx.setParam('low', 'abc');
+  assert.equal(fx.params.low, 6);
+});
+
+test('eq tail is short and finite', () => {
+  const t = createEq(stubCtx()).tailMs();
+  assert.ok(Number.isFinite(t) && t > 0 && t <= 500);
 });

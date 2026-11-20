@@ -176,3 +176,11 @@ test('setFxEnabled passes the bypass to the effect, and a bypassed effect still 
   t.mock.timers.tick(fx.tailMs() + 101);
   assert.equal(disconnected, 1);
 });
+
+test('addEffect creates an equalizer wired to the master', (t) => {
+  const { routing, master } = setup(t);
+  const fx = routing.addEffect('eq');
+  assert.equal(fx.type, 'eq');
+  assert.equal(fx.name, 'eq');
+  assert.ok(fx.output.connections.includes(master));
+});

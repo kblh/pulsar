@@ -1,5 +1,6 @@
 // How each effect's parameters are shown: one slider per field. Pure data, no DOM.
 const pct = (v) => `${Math.round(v * 100)}%`;
+const db = (v) => (v === 0 ? '0 dB' : `${v > 0 ? '+' : '\u2212'}${Math.abs(v)} dB`);
 
 export const FX_FIELDS = {
   delay: [
@@ -15,7 +16,14 @@ export const FX_FIELDS = {
     { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
     { key: 'width', min: 0, max: 1, step: 0.05, format: pct },
   ],
+  eq: [
+    { key: 'low', min: -12, max: 12, step: 0.5, format: db },
+    { key: 'mid', min: -12, max: 12, step: 0.5, format: db },
+    { key: 'high', min: -12, max: 12, step: 0.5, format: db },
+    { key: 'midFreq', min: 200, max: 5000, step: 10, scale: 'log', format: (v) => `${v} Hz` },
+    { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
+  ],
 };
 
 /** The text of the add-menu button. */
-export const FX_LABELS = { delay: 'delay', reverb: 'reverb' };
+export const FX_LABELS = { delay: 'delay', reverb: 'reverb', eq: 'eq' };

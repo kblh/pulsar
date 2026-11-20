@@ -200,3 +200,16 @@ test('validateScene clamps ping-pong and width and keeps in-range values', () =>
   assert.equal(scene.effects[1].params.width, 0);
   assert.equal(scene.effects[2].params.pingpong, 0.35);
 });
+
+test('an equalizer round-trips through a scene and out-of-range bands are clamped', () => {
+  const { modules, effects } = sample();
+  effects.push({ id: 'fx9', type: 'eq', name: 'tone', enabled: false, params: { low: 6, mid: -3, high: 2, midFreq: 2500, return: 0.4 } });
+  const scene = serializeScene({ modules, effects });
+  const back = validateScene(JSON.parse(JSON.stringify(scene))).scene;
+  const eq = back.effects.find((e) => e.type === 'eq');
+  assert.deepEqual(eq.params, { low: 6, mid: -3, high: 2, midFreq: 2500, return: 0.4 });
+  assert.equal(eq.enabled, false);
+  assert.equal(eq.name, 'tone');
+  const wild = validateScene({ version: 1, effects: [{ type: 'eq', params: { low: 99, high: -99, midFreq: 1 } }], modules: [] }).scene;
+  assert.deepEqual(wild.effects[0].params, { low: 12, high: -12, midFreq: 200 });
+});

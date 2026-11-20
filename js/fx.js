@@ -9,11 +9,13 @@ const MAX_TAIL_MS = 20000;
 export const FX_DEFAULTS = {
   delay: { time: 350, feedback: 0.4, tone: 4000, return: 0.5, pingpong: 0 },
   reverb: { decay: 2.5, damping: 0.5, return: 0.5, width: 1 },
+  eq: { low: 0, mid: 0, high: 0, midFreq: 1000, return: 0.5 },
 };
 
 export const FX_RANGES = {
   delay: { time: [10, 2000], feedback: [0, 0.9], tone: [200, 12000], return: [0, 1], pingpong: [0, 1] },
   reverb: { decay: [0.3, 10], damping: [0, 1], return: [0, 1], width: [0, 1] },
+  eq: { low: [-12, 12], mid: [-12, 12], high: [-12, 12], midFreq: [200, 5000], return: [0, 1] },
 };
 
 /** The accepted value for a parameter, or null when the key or value is unusable. */
@@ -239,7 +241,64 @@ export function createReverb(ctx, params) {
   };
 }
 
-const MAKERS = { delay: createDelay, reverb: createReverb };
+const EQ_LOW_HZ = 200;
+const EQ_HIGH_HZ = 4000;
+const EQ_TAIL_MS = 100;
+
+/** Three bands in a row: low shelf, a peaking mid you can tune, high shelf. Biquads treat each channel alone, so L/R stay apart. */
+export function createEq(ctx, params) {
+  const p = accept('eq', params);
+  const input = ctx.createGain();
+  input.gain.value = 1;
+  const band = (type, freq, gainDb, q) => {
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    f.gain.value = gainDb;
+    if (q !== undefined) f.Q.value = q;
+    return f;
+  };
+  const low = band('lowshelf', EQ_LOW_HZ, p.low);
+  const mid = band('peaking', p.midFreq, p.mid, 1);
+  const high = band('highshelf', EQ_HIGH_HZ, p.high);
+  const ret = ctx.createGain();
+  ret.gain.value = p.return;
+  input.connect(low);
+  low.connect(mid);
+  mid.connect(high);
+  high.connect(ret);
+
+  const ramp = (param, v) => param.setTargetAtTime(v, ctx.currentTime, RAMP);
+  let enabled = true;
+  return {
+    type: 'eq',
+    params: p,
+    input,
+    output: ret,
+    get enabled() { return enabled; },
+    setEnabled(on) {
+      enabled = Boolean(on);
+      ramp(ret.gain, enabled ? p.return : 0);
+    },
+    setParam(key, value) {
+      const v = clampFxParam('eq', key, value);
+      if (v === null) return;
+      p[key] = v;
+      if (key === 'low') ramp(low.gain, v);
+      else if (key === 'mid') ramp(mid.gain, v);
+      else if (key === 'high') ramp(high.gain, v);
+      else if (key === 'midFreq') ramp(mid.frequency, v);
+      else if (key === 'return' && enabled) ramp(ret.gain, v);
+    },
+    tailMs: () => EQ_TAIL_MS,
+    dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, EQ_TAIL_MS / 4000),
+    disconnect() {
+      for (const n of [input, low, mid, high, ret]) n.disconnect();
+    },
+  };
+}
+
+const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq };
 
 /** Every effect type the app knows, in menu order. Defaults, ranges and factories above are keyed by these. */
 export const FX_TYPES = Object.keys(MAKERS);

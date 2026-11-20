@@ -22,3 +22,14 @@ test('every effect type has UI fields for exactly its parameters, matching the r
 test('every effect type has a menu label', () => {
   for (const type of FX_TYPES) assert.ok(typeof FX_LABELS[type] === 'string' && FX_LABELS[type].length > 0, type);
 });
+
+test('eq fields show decibels with a sign and the mid frequency in hertz', () => {
+  const f = Object.fromEntries(FX_FIELDS.eq.map((x) => [x.key, x]));
+  assert.equal(f.low.format(0), '0 dB');
+  assert.equal(f.low.format(3), '+3 dB');
+  assert.equal(f.mid.format(-6), '\u22126 dB');
+  assert.equal(f.high.format(1.5), '+1.5 dB');
+  assert.equal(f.high.format(12), '+12 dB');
+  assert.equal(f.midFreq.format(1000), '1000 Hz');
+  assert.equal(f.midFreq.scale, 'log');
+});
