@@ -4,6 +4,7 @@ import { SCALES } from './scales.js';
 import { DEFAULT_ENV } from './synth.js';
 import { WAVES, ROOTS } from './options.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
+import { cleanDuration, MAX_PARTS } from './sequence.js';
 
 export const NAME_MAX = 24;
 const MODULE_TYPES = ['melodic', 'rhythmic', 'drone'];
@@ -26,8 +27,10 @@ export function cleanName(value, fallback) {
 }
 
 /** Plain-data snapshot of what the user set up (not the evolved state). `stoppedByTransport(m)` marks modules only [stop all] stopped. */
-export function serializeScene({ modules, effects, stoppedByTransport = () => false }) {
+export function serializeScene({ modules, effects, stoppedByTransport = () => false, sequence = null }) {
   const index = new Map(effects.map((fx, i) => [fx.id, i]));
+  const position = new Map(modules.map((m, i) => [m.id, i]));
+  const seq = sequence?.toData();
   return {
     version: 1,
     effects: effects.map((fx) => ({ type: fx.type, name: fx.name ?? fx.type, enabled: fx.enabled !== false, params: clone(fx.params) })),
@@ -40,7 +43,37 @@ export function serializeScene({ modules, effects, stoppedByTransport = () => fa
       running: m.running || stoppedByTransport(m), // [stop all] is not a hand-made stop
       sends: (m.sends ?? []).map((s) => ({ fx: index.has(s.fx) ? index.get(s.fx) : null, level: s.level })),
     })),
+    // Members are saved as positions in `modules`, so the scene does not depend on module ids.
+    ...(seq
+      ? {
+        sequence: {
+          name: seq.name,
+          loop: seq.loop,
+          parts: seq.parts.map((p) => ({ name: p.name, duration: p.duration, modules: p.modules.filter((id) => position.has(id)).map((id) => position.get(id)) })),
+        },
+      }
+      : {}),
   };
+}
+
+/** A sequence from untrusted data: `remap` turns saved module positions into positions in the cleaned scene. Null when unusable. */
+function cleanSequence(raw, remap, problems) {
+  if (!isObj(raw) || !Array.isArray(raw.parts)) {
+    problems.push('sequence: nothing usable in it');
+    return null;
+  }
+  if (raw.parts.length > MAX_PARTS) problems.push(`sequence: only the first ${MAX_PARTS} parts are used`);
+  const parts = raw.parts.slice(0, MAX_PARTS).map((p, i) => {
+    const o = isObj(p) ? p : {};
+    const members = [];
+    if (Array.isArray(o.modules)) {
+      for (const x of o.modules.slice(0, MAX_MODULES * 2)) {
+        if (Number.isInteger(x) && remap.has(x) && !members.includes(remap.get(x))) members.push(remap.get(x));
+      }
+    }
+    return { name: cleanName(o.name, `part ${i + 1}`), duration: cleanDuration(o.duration), modules: members };
+  });
+  return { name: cleanName(raw.name, 'sequence'), loop: raw.loop === true, parts };
 }
 
 function cleanPitchConfig(c) {
@@ -119,6 +152,7 @@ export function validateScene(data) {
   });
 
   const modules = [];
+  const moduleRemap = new Map(); // saved module position -> position after cleaning
   let modulesCapped = false;
   (Array.isArray(data.modules) ? data.modules : []).forEach((m, i) => {
     if (modules.length >= MAX_MODULES) {
@@ -138,6 +172,7 @@ export function validateScene(data) {
         level: isNum(x.level) ? clampLevel(x.level) : DEFAULT_SEND_LEVEL,
       };
     });
+    moduleRemap.set(i, modules.length);
     modules.push({
       type: m.type,
       name: cleanName(m.name, m.type),
@@ -150,7 +185,8 @@ export function validateScene(data) {
   });
 
   if (!effects.length && !modules.length) return { scene: null, problems: [...problems, 'scene is empty'] };
-  return { scene: { version: 1, effects, modules }, problems };
+  const sequence = data.sequence === undefined ? null : cleanSequence(data.sequence, moduleRemap, problems);
+  return { scene: { version: 1, effects, modules, ...(sequence ? { sequence } : {}) }, problems };
 }
 
 const FACTORIES = { melodic: createMelodicModule, rhythmic: createRhythmicModule, drone: createDroneModule };
@@ -167,7 +203,7 @@ function applyParams(m, params) {
 
 /**
  * Replaces the current setup with a validated scene.
- * `ui` = { clear(), addFxPanel(fx), addModulePanel(m) }; clear() must remove every module and effect.
+ * `ui` = { clear(), addFxPanel(fx), addModulePanel(m), addSequencePanel?(sequence) }; clear() must remove every module, effect and the sequence.
  * Parts that fail to build are skipped (and reported), never left half-built.
  */
 export function applyScene(engine, scene, ui) {
@@ -192,6 +228,7 @@ export function applyScene(engine, scene, ui) {
     }
   });
 
+  const built = []; // scene module position -> id of the module that was built (undefined when it failed)
   scene.modules.forEach((e, i) => {
     let m = null;
     let added = false;
@@ -206,6 +243,7 @@ export function applyScene(engine, scene, ui) {
       e.sends.forEach((s, slot) => engine.setSend(m, slot, { fx: fxs[s.fx]?.id ?? null, level: s.level }));
       if (!e.running) engine.toggle(m);
       ui.addModulePanel(m);
+      built[i] = m.id;
     } catch {
       if (added) {
         try { engine.removeModule(m.id); } catch { /* already gone */ }
@@ -213,5 +251,19 @@ export function applyScene(engine, scene, ui) {
       skipped.push(`module ${i + 1} (${e.type})`);
     }
   });
+
+  if (scene.sequence) {
+    try {
+      const { name, loop, parts } = scene.sequence;
+      const sequence = engine.addSequence({
+        name,
+        loop,
+        parts: parts.map((p) => ({ name: p.name, duration: p.duration, modules: p.modules.map((i) => built[i]).filter((id) => id !== undefined) })),
+      });
+      ui.addSequencePanel?.(sequence);
+    } catch {
+      skipped.push('sequence');
+    }
+  }
   return { skipped };
 }

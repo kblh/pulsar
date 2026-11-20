@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { applyScene, validateScene, serializeScene } from '../js/scene.js';
 import { createMelodicModule, createDroneModule } from '../js/module.js';
 
-function fakeEngine({ stopped = false, failAddModule = [], failSetVolume = [], failAddEffect = [] } = {}) {
+function fakeEngine({ stopped = false, failAddModule = [], failSetVolume = [], failAddEffect = [], failAddSequence = false } = {}) {
   const log = [];
   let n = 0;
   const e = {
@@ -31,6 +31,13 @@ function fakeEngine({ stopped = false, failAddModule = [], failSetVolume = [], f
     setPan(m, v) { m.pan = v; log.push('pan'); },
     setSend(m, slot, patch) { Object.assign(m.sends[slot], patch); log.push('send'); },
     toggle(m) { m.running = !m.running; log.push(`toggle:${m.type}`); },
+    sequenceData: null,
+    addSequence(data) {
+      if (failAddSequence) throw new Error('boom');
+      e.sequenceData = data;
+      log.push('addSequence');
+      return { id: 'sequence', ...data };
+    },
     setFxEnabled(fx, on) { fx.enabled = on; log.push(`fxEnabled:${fx.id}:${on}`); },
   };
   return e;
@@ -40,6 +47,8 @@ function fakeUi(engine) {
   const ui = { panels: [], fxPanels: [] };
   ui.clear = () => { engine.modules.length = 0; engine.effects.length = 0; engine.log.push('clear'); };
   ui.addFxPanel = (fx) => ui.fxPanels.push(fx);
+  ui.sequencePanels = [];
+  ui.addSequencePanel = (q) => ui.sequencePanels.push(q);
   ui.addModulePanel = (m) => ui.panels.push(m);
   return ui;
 }
@@ -179,4 +188,40 @@ test('a serialized melodic and drone module round-trips its osc 2 settings throu
   const back = validateScene(JSON.parse(JSON.stringify(serializeScene({ modules: [m, d], effects: [] })))).scene;
   assert.deepEqual([back.modules[0].params.mix, back.modules[0].params.wave2, back.modules[0].params.detune], [0.35, 'triangle', 9]);
   assert.deepEqual([back.modules[1].params.mix, back.modules[1].params.wave2, back.modules[1].params.detune], [0.6, 'square', -20]);
+});
+
+test('applyScene builds the sequence after the modules, with the ids of the modules it built', () => {
+  const e = fakeEngine();
+  const ui = fakeUi(e);
+  applyScene(e, scene([mod('melodic'), mod('rhythmic'), mod('drone')]), ui);
+  assert.ok(!e.log.includes('addSequence'), 'a scene without a sequence builds none');
+  const e2 = fakeEngine();
+  const ui2 = fakeUi(e2);
+  const withSeq = validateScene({
+    version: 1, effects: [], modules: [mod('melodic'), mod('rhythmic'), mod('drone')],
+    sequence: { name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [0, 2] }, { name: 'b', duration: 5, modules: [1] }] },
+  }).scene;
+  const { skipped } = applyScene(e2, withSeq, ui2);
+  assert.deepEqual(skipped, []);
+  const ids = e2.modules.map((m) => m.id);
+  assert.deepEqual(e2.sequenceData, { name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [ids[0], ids[2]] }, { name: 'b', duration: 5, modules: [ids[1]] }] });
+  assert.ok(e2.log.indexOf('addSequence') > e2.log.lastIndexOf('addModule:drone'), 'after the last module');
+  assert.equal(e2.log.indexOf('clear'), 0, 'the old setup is cleared first');
+  assert.equal(ui2.sequencePanels.length, 1);
+});
+
+test('a module that could not be built disappears from the parts, and a failing sequence is reported', () => {
+  const e = fakeEngine({ failAddModule: ['rhythmic'] });
+  const sc = validateScene({
+    version: 1, effects: [], modules: [mod('melodic'), mod('rhythmic'), mod('drone')],
+    sequence: { parts: [{ modules: [0, 1, 2] }] },
+  }).scene;
+  const { skipped } = applyScene(e, sc, fakeUi(e));
+  assert.deepEqual(skipped, ['module 2 (rhythmic)']);
+  const ids = e.modules.map((m) => m.id);
+  assert.deepEqual(e.sequenceData.parts[0].modules, [ids[0], ids[1]]);
+  const bad = fakeEngine({ failAddSequence: true });
+  const r = applyScene(bad, validateScene({ version: 1, effects: [], modules: [mod('drone')], sequence: { parts: [] } }).scene, fakeUi(bad));
+  assert.deepEqual(r.skipped, ['sequence']);
+  assert.equal(bad.modules.length, 1);
 });

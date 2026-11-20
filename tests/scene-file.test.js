@@ -145,3 +145,13 @@ test('parts of a scene that validation dropped are reported as notes, not as ski
   assert.match(r.notes[0], /^half: /);
   assert.deepEqual(parseSceneFile(sceneToFile('ok', sampleScene()).text, 'x').notes, []);
 });
+
+test('a scene file keeps its sequence and a hostile one never throws', () => {
+  const sc = { version: 1, effects: [], modules: [{ type: 'drone', params: {} }], sequence: { name: 'song', parts: [{ duration: 20, modules: [0] }] } };
+  const ok = parseSceneFile(JSON.stringify({ pulsar: 'scene', name: 'x', scene: sc }), 'x');
+  assert.deepEqual(ok.entries[0].scene.sequence.parts[0], { name: 'part 1', duration: 20, modules: [0] });
+  const evil = parseSceneFile(JSON.stringify({ pulsar: 'scene', name: 'y', scene: { ...sc, sequence: { parts: new Array(5000).fill({ duration: -1, modules: [1e9, '__proto__'] }) } } }), 'y');
+  assert.equal(evil.entries[0].scene.sequence.parts.length, 32);
+  const junk = parseSceneFile(JSON.stringify({ pulsar: 'scene', name: 'z', scene: { ...sc, sequence: 'x' } }), 'z');
+  assert.ok(!('sequence' in junk.entries[0].scene));
+});

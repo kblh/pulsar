@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanName, serializeScene, validateScene } from '../js/scene.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from '../js/module.js';
+import { createSequence } from '../js/sequence.js';
 
 test('modules have a default name equal to their type', () => {
   assert.equal(createMelodicModule().name, 'melodic');
@@ -250,4 +251,83 @@ test('validateScene drops osc 2 keys on a rhythmic module and takes a scene with
   });
   for (const k of ['wave2', 'mix', 'detune']) assert.ok(!(k in scene.modules[0].params), k);
   for (const i of [1, 2]) for (const k of ['wave2', 'mix', 'detune']) assert.ok(!(k in scene.modules[i].params), `old scene module ${i} ${k}`);
+});
+
+const hostOf = (modules) => ({ ids: () => modules.map((m) => m.id), isRunning: () => false, setRunning() {} });
+const seqScene = (sequence, mods = ['melodic', 'rhythmic', 'drone']) => ({
+  version: 1,
+  effects: [],
+  modules: mods.map((type) => ({ type, name: type, params: {}, volume: 1, pan: 0, running: true, sends: [] })),
+  sequence,
+});
+
+test('serializeScene writes the sequence with module positions instead of ids and leaves the key out without one', () => {
+  const { modules, effects } = sample();
+  const seq = createSequence({ name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [modules[2].id, modules[0].id] }, { duration: 40, modules: [modules[1].id] }] }, hostOf(modules));
+  const scene = serializeScene({ modules, effects, sequence: seq });
+  assert.deepEqual(scene.sequence, { name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [2, 0] }, { name: 'part 2', duration: 40, modules: [1] }] });
+  assert.deepEqual(scene, JSON.parse(JSON.stringify(scene)));
+  assert.ok(!('sequence' in serializeScene({ modules, effects })));
+  seq.parts[0].modules.push(99999); // a module that is not in the scene is left out
+  assert.deepEqual(serializeScene({ modules, effects, sequence: seq }).sequence.parts[0].modules, [2, 0]);
+});
+
+test('validateScene keeps and cleans the sequence', () => {
+  const { scene } = validateScene(seqScene({
+    name: 'x'.repeat(100),
+    loop: 'yes',
+    parts: [
+      { name: 'y'.repeat(100), duration: 'abc', modules: [0, 0, 2, 7, 'a', 1.5, null, -1] },
+      { duration: 0, modules: 'nope' },
+      { duration: 9999 },
+      'junk',
+      null,
+    ],
+  }));
+  assert.equal(scene.sequence.name.length, 24);
+  assert.equal(scene.sequence.loop, false);
+  assert.equal(scene.sequence.parts.length, 5);
+  assert.equal(scene.sequence.parts[0].name.length, 24);
+  assert.equal(scene.sequence.parts[0].duration, 30);
+  assert.deepEqual(scene.sequence.parts[0].modules, [0, 2]);
+  assert.deepEqual([scene.sequence.parts[1].duration, scene.sequence.parts[1].modules], [1, []]);
+  assert.equal(scene.sequence.parts[2].duration, 600);
+  assert.equal(scene.sequence.parts[3].name, 'part 4');
+  const wide = validateScene(seqScene({ parts: Array.from({ length: 50 }, () => ({ duration: 5 })) })).scene;
+  assert.equal(wide.sequence.parts.length, 32);
+  const huge = validateScene(seqScene({ parts: new Array(1e6).fill({ duration: 5 }) })).scene;
+  assert.equal(huge.sequence.parts.length, 32);
+});
+
+test('validateScene renumbers sequence members after an invalid module was dropped and removes references to it', () => {
+  const { scene, problems } = validateScene(seqScene({ parts: [{ modules: [0, 1, 2] }, { modules: [1] }] }, ['melodic', 'banjo', 'drone']));
+  assert.equal(scene.modules.length, 2);
+  assert.deepEqual(scene.sequence.parts.map((p) => p.modules), [[0, 1], []]);
+  assert.ok(problems.length > 0);
+});
+
+test('validateScene omits an unusable sequence, reports it and takes scenes without one as before', () => {
+  for (const bad of [5, null, [], 'x', true, { parts: 'x' }, { parts: {} }, {}]) {
+    const { scene } = validateScene(seqScene(bad));
+    assert.ok(!('sequence' in scene), JSON.stringify(bad));
+  }
+  const { problems } = validateScene(seqScene({ parts: 'x' }));
+  assert.ok(problems.some((p) => /sequence/.test(p)));
+  const plain = validateScene({ version: 1, effects: [], modules: [{ type: 'drone', params: {} }] });
+  assert.ok(!('sequence' in plain.scene));
+  assert.deepEqual(plain.problems, []);
+});
+
+test('a __proto__ key in a sequence changes nothing', () => {
+  const evil = JSON.parse('{"name":"s","__proto__":{"polluted":1},"parts":[{"name":"p","duration":5,"modules":[0],"__proto__":{"x":1}}]}');
+  const { scene } = validateScene(seqScene(evil));
+  assert.equal(({}).polluted, undefined);
+  assert.equal(scene.sequence.parts[0].x, undefined);
+});
+
+test('the sequence round-trips through serialisation and validation', () => {
+  const { modules, effects } = sample();
+  const seq = createSequence({ name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [modules[0].id, modules[2].id] }, { name: 'b', duration: 40, modules: [modules[1].id] }] }, hostOf(modules));
+  const back = validateScene(JSON.parse(JSON.stringify(serializeScene({ modules, effects, sequence: seq })))).scene;
+  assert.deepEqual(back.sequence, { name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [0, 2] }, { name: 'b', duration: 40, modules: [1] }] });
 });

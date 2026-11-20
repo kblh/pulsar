@@ -15,7 +15,7 @@ function defaultDownload(filename, text) {
 
 /**
  * [save] [load] in the header bar and the save row / scene list in the panel below it.
- * `sceneUi` is what applyScene needs: { clear, addFxPanel, addModulePanel }.
+ * `sceneUi` is what applyScene needs: { clear, addFxPanel, addModulePanel, addSequencePanel }.
  */
 export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download = defaultDownload }) {
   let mode = null; // 'save' | 'load' | null
@@ -56,7 +56,7 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
       say('nothing to save');
       return;
     }
-    const r = store.save(name, serializeScene({ modules: engine.modules, effects: engine.effects, stoppedByTransport: engine.stoppedByTransport }));
+    const r = store.save(name, serializeScene({ modules: engine.modules, effects: engine.effects, stoppedByTransport: engine.stoppedByTransport, sequence: engine.sequence }));
     if (!r.ok) {
       say(r.error);
       return;
@@ -87,7 +87,7 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
       say('nothing to export');
       return;
     }
-    const scene = serializeScene({ modules: engine.modules, effects: engine.effects, stoppedByTransport: engine.stoppedByTransport });
+    const scene = serializeScene({ modules: engine.modules, effects: engine.effects, stoppedByTransport: engine.stoppedByTransport, sequence: engine.sequence });
     const file = sceneToFile(name, scene);
     download(file.filename, file.text);
   }
