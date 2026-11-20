@@ -19,7 +19,9 @@ export function stubCtx() {
     createGain: () => mk('gain', { gain: param() }),
     createStereoPanner: () => mk('pan', { pan: param() }),
     createDelay: (max) => mk('delay', { maxDelayTime: max, delayTime: param() }),
-    createBiquadFilter: () => mk('biquad', { frequency: param(), Q: param() }),
+    createBiquadFilter: () => mk('biquad', { frequency: param(), Q: param(), gain: param() }),
+    createChannelSplitter: (n) => mk('splitter', { channels: n }),
+    createChannelMerger: (n) => mk('merger', { channels: n }),
     createConvolver: () => mk('convolver'),
     createBuffer: (ch, len, sr) => {
       const data = Array.from({ length: ch }, () => new Float32Array(len));

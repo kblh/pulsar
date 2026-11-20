@@ -1,36 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, makeImpulse, createDelay, createReverb } from '../js/fx.js';
+import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, makeImpulse, createDelay, createReverb } from '../js/fx.js';
 import { mulberry32 } from '../js/rng.js';
+import { stubCtx } from './helpers/stub-ctx.js';
 
-function stubCtx() {
-  const nodes = [];
-  const buffers = [];
-  const time = { t: 1 };
-  const param = () => {
-    const calls = [];
-    return { calls, setTargetAtTime: (...a) => calls.push(['target', ...a]), set value(v) { calls.push(['value', v]); } };
-  };
-  const mk = (kind, extra = {}) => {
-    const node = { kind, connections: [], disconnected: 0, ...extra,
-      connect(x) { node.connections.push(x); return x; }, disconnect() { node.disconnected++; } };
-    nodes.push(node);
-    return node;
-  };
-  return {
-    nodes, buffers, sampleRate: 8000,
-    get currentTime() { return time.t; },
-    createGain: () => mk('gain', { gain: param() }),
-    createDelay: (max) => mk('delay', { maxDelayTime: max, delayTime: param() }),
-    createBiquadFilter: () => mk('biquad', { frequency: param(), Q: param() }),
-    createConvolver: () => mk('convolver'),
-    createBuffer: (ch, len, sr) => {
-      const data = Array.from({ length: ch }, () => new Float32Array(len));
-      const b = { length: len, sampleRate: sr, getChannelData: (i) => data[i] };
-      buffers.push(b);
-      return b;
-    },
-  };
+/** True when `to` can be reached from `from` through recorded connections. */
+function reaches(from, to, seen = new Set()) {
+  if (from === to) return true;
+  if (seen.has(from)) return false;
+  seen.add(from);
+  return from.connections.some((n) => reaches(n, to, seen));
 }
 
 const valueCalls = (ctx) =>
@@ -81,7 +60,7 @@ test('delay graph: input -> delay -> lowpass -> return, feedback loop through th
   const tone = ctx.nodes.find((n) => n.kind === 'biquad');
   assert.ok(dly.maxDelayTime >= 2);
   assert.equal(tone.type, 'lowpass');
-  assert.ok(fx.input.connections.includes(dly));
+  assert.ok(reaches(fx.input, dly), 'input reaches the delay line');
   assert.ok(dly.connections.includes(tone));
   assert.ok(tone.connections.includes(fx.output));
   const fb = tone.connections.find((n) => n !== fx.output);
@@ -259,4 +238,67 @@ test('the registry lists every effect type with defaults, ranges and a factory',
 test('createEffect refuses an unknown type', () => {
   assert.throws(() => createEffect(stubCtx(), 'chorus'), /unknown effect: chorus/);
   assert.throws(() => createEffect(stubCtx(), undefined), /unknown effect/);
+});
+
+test('ping-pong and width are ranged, default to today\'s sound and fill in when a scene lacks them', () => {
+  assert.equal(clampFxParam('delay', 'pingpong', 5), 1);
+  assert.equal(clampFxParam('delay', 'pingpong', -1), 0);
+  assert.equal(clampFxParam('reverb', 'width', 5), 1);
+  assert.equal(clampFxParam('reverb', 'width', -2), 0);
+  for (const bad of ['abc', NaN, null, undefined]) {
+    assert.equal(clampFxParam('delay', 'pingpong', bad), null);
+    assert.equal(clampFxParam('reverb', 'width', bad), null);
+  }
+  assert.equal(createEffect(stubCtx(), 'delay', { time: 100 }).params.pingpong, 0);
+  assert.equal(createEffect(stubCtx(), 'reverb', { decay: 2 }).params.width, 1);
+});
+
+test('delayLoopGain stays below 1 for every allowed combination and grows with feedback', () => {
+  for (const feedback of [0, 0.5, 0.9]) for (const pingpong of [0, 0.25, 0.5, 1]) assert.ok(delayLoopGain({ feedback, pingpong }) < 1, `${feedback}/${pingpong}`);
+  assert.ok(delayLoopGain({ feedback: 0.9, pingpong: 0.5 }) > delayLoopGain({ feedback: 0.4, pingpong: 0.5 }));
+  assert.ok(delayLoopGain({ feedback: 0.9, pingpong: 1 }) <= 0.9 + 1e-12);
+});
+
+test('delay ping-pong moves the mix with ramps only and keeps the tail finite', () => {
+  const ctx = stubCtx();
+  const fx = createDelay(ctx, { feedback: 0.4 });
+  const before = valueCalls(ctx);
+  fx.setParam('pingpong', 1);
+  assert.equal(fx.params.pingpong, 1);
+  const finals = ctx.nodes.filter((n) => n.kind === 'gain').map((n) => n.gain.calls.filter((c) => c[0] === 'target').at(-1)?.[1]);
+  assert.ok(finals.includes(1), 'a gain was ramped up to the ping-pong input level');
+  assert.ok(finals.includes(0), 'the straight paths were ramped down');
+  assert.ok(finals.some((v) => v !== undefined && Math.abs(v - 0.4) < 1e-9), 'the crossed feedback carries the whole feedback');
+  assert.deepEqual(valueCalls(ctx), before);
+  fx.setParam('pingpong', 0);
+  fx.setParam('feedback', 0.9);
+  fx.setParam('time', 2000);
+  fx.setParam('pingpong', 1);
+  const tail = fx.tailMs();
+  assert.ok(Number.isFinite(tail) && tail <= 20000);
+});
+
+test('delay ping-pong: at 0 the straight paths carry everything and the crossed feedback is silent', () => {
+  const ctx = stubCtx();
+  createDelay(ctx, { feedback: 0.4, pingpong: 0 });
+  const created = ctx.nodes.filter((n) => n.kind === 'gain').map((n) => n.gain.calls.find((c) => c[0] === 'value')?.[1]);
+  assert.ok(created.includes(0), 'crossed feedback and ping-pong input start at 0');
+  const swap = ctx.nodes.find((n) => n.kind === 'splitter');
+  assert.ok(swap, 'channel swap exists');
+});
+
+test('reverb width: 1 keeps the channels apart, 0 makes the output mono, changes are ramps', () => {
+  const ctx = stubCtx();
+  const fx = createReverb(ctx);
+  const pans = ctx.nodes.filter((n) => n.kind === 'pan');
+  assert.equal(pans.length, 2);
+  assert.deepEqual(pans.map((n) => n.pan.calls.find((c) => c[0] === 'value')[1]), [-1, 1]);
+  const before = valueCalls(ctx);
+  fx.setParam('width', 0);
+  assert.deepEqual(pans.map((n) => n.pan.calls.filter((c) => c[0] === 'target').at(-1)[1]), [0, 0]);
+  fx.setParam('width', 0.5);
+  assert.deepEqual(pans.map((n) => n.pan.calls.filter((c) => c[0] === 'target').at(-1)[1]), [-0.5, 0.5]);
+  assert.equal(fx.params.width, 0.5);
+  assert.equal(ctx.nodes.filter((n) => n.kind === 'pan').flatMap((n) => n.pan.calls).filter((c) => c[0] === 'value').length, 2);
+  assert.ok(valueCalls(ctx).length === before.length);
 });

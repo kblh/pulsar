@@ -189,3 +189,14 @@ test('scene keeps the bypass state of effects and reads old scenes as enabled', 
     assert.equal(s.effects[0].enabled, true, String(bad));
   }
 });
+
+test('validateScene clamps ping-pong and width and keeps in-range values', () => {
+  const { scene } = validateScene({
+    version: 1,
+    effects: [{ type: 'delay', params: { pingpong: 9 } }, { type: 'reverb', params: { width: -3 } }, { type: 'delay', params: { pingpong: 0.35 } }],
+    modules: [],
+  });
+  assert.equal(scene.effects[0].params.pingpong, 1);
+  assert.equal(scene.effects[1].params.width, 0);
+  assert.equal(scene.effects[2].params.pingpong, 0.35);
+});

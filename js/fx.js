@@ -7,13 +7,13 @@ const FADE = 0.05;
 const MAX_TAIL_MS = 20000;
 
 export const FX_DEFAULTS = {
-  delay: { time: 350, feedback: 0.4, tone: 4000, return: 0.5 },
-  reverb: { decay: 2.5, damping: 0.5, return: 0.5 },
+  delay: { time: 350, feedback: 0.4, tone: 4000, return: 0.5, pingpong: 0 },
+  reverb: { decay: 2.5, damping: 0.5, return: 0.5, width: 1 },
 };
 
 export const FX_RANGES = {
-  delay: { time: [10, 2000], feedback: [0, 0.9], tone: [200, 12000], return: [0, 1] },
-  reverb: { decay: [0.3, 10], damping: [0, 1], return: [0, 1] },
+  delay: { time: [10, 2000], feedback: [0, 0.9], tone: [200, 12000], return: [0, 1], pingpong: [0, 1] },
+  reverb: { decay: [0.3, 10], damping: [0, 1], return: [0, 1], width: [0, 1] },
 };
 
 /** The accepted value for a parameter, or null when the key or value is unusable. */
@@ -50,6 +50,16 @@ export function makeImpulse(decay, damping, sampleRate, rng) {
   });
 }
 
+/**
+ * The worst-case gain of the delay's feedback loop (the lowpass in the loop peaks at or below 1, see the Q test).
+ * The straight and the crossed feedback together always carry `feedback`, so ping-pong cannot make the loop unstable.
+ */
+export function delayLoopGain({ feedback, pingpong }) {
+  const fb = clampFxParam('delay', 'feedback', feedback) ?? 0;
+  const pp = clampFxParam('delay', 'pingpong', pingpong) ?? 0;
+  return fb * (1 - pp + pp);
+}
+
 export function createDelay(ctx, params) {
   const p = accept('delay', params);
   const input = ctx.createGain();
@@ -60,17 +70,43 @@ export function createDelay(ctx, params) {
   tone.type = 'lowpass';
   tone.Q.value = -3; // dB: the default (+1 dB) peaks above 1 and, inside the feedback loop, makes it unstable
   tone.frequency.value = p.tone;
-  const feedback = ctx.createGain();
-  feedback.gain.value = p.feedback;
+  const feedback = ctx.createGain(); // the straight feedback path
+  feedback.gain.value = p.feedback * (1 - p.pingpong);
   const ret = ctx.createGain();
   ret.gain.value = p.return;
-  input.connect(delay);
+  // Ping-pong: the input is also summed to mono into the left channel only, and a second feedback path swaps the
+  // channels, so the echoes alternate left and right. At 0 only the straight paths carry signal.
+  const straightIn = ctx.createGain();
+  straightIn.gain.value = 1 - p.pingpong;
+  const ppIn = ctx.createGain();
+  ppIn.gain.value = p.pingpong;
+  const toLeft = ctx.createChannelMerger(2);
+  const swapIn = ctx.createChannelSplitter(2);
+  const swapOut = ctx.createChannelMerger(2);
+  const cross = ctx.createGain(); // the crossed feedback path
+  cross.gain.value = p.feedback * p.pingpong;
+  input.connect(straightIn);
+  straightIn.connect(delay);
+  input.connect(toLeft);
+  toLeft.connect(ppIn);
+  ppIn.connect(delay);
   delay.connect(tone);
   tone.connect(ret);
   tone.connect(feedback);
   feedback.connect(delay);
+  tone.connect(swapIn);
+  swapIn.connect(swapOut, 0, 1);
+  swapIn.connect(swapOut, 1, 0);
+  swapOut.connect(cross);
+  cross.connect(delay);
 
   const ramp = (param, v) => param.setTargetAtTime(v, ctx.currentTime, RAMP);
+  const applyMix = () => {
+    ramp(feedback.gain, p.feedback * (1 - p.pingpong));
+    ramp(cross.gain, p.feedback * p.pingpong);
+    ramp(straightIn.gain, 1 - p.pingpong);
+    ramp(ppIn.gain, p.pingpong);
+  };
   let enabled = true;
   const tailMs = () =>
     p.feedback <= 0 ? p.time : Math.min(MAX_TAIL_MS, (p.time * Math.log(0.001)) / Math.log(p.feedback));
@@ -91,14 +127,14 @@ export function createDelay(ctx, params) {
       if (v === null) return;
       p[key] = v;
       if (key === 'time') ramp(delay.delayTime, v / 1000);
-      else if (key === 'feedback') ramp(feedback.gain, v);
+      else if (key === 'feedback' || key === 'pingpong') applyMix();
       else if (key === 'tone') ramp(tone.frequency, v);
-      else if (enabled) ramp(ret.gain, v);
+      else if (key === 'return' && enabled) ramp(ret.gain, v);
     },
     tailMs,
     dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, tailMs() / 4000),
     disconnect() {
-      for (const n of [input, delay, tone, feedback, ret]) n.disconnect();
+      for (const n of [input, straightIn, ppIn, toLeft, delay, tone, feedback, swapIn, swapOut, cross, ret]) n.disconnect();
     },
   };
 }
@@ -109,6 +145,16 @@ export function createReverb(ctx, params) {
   input.gain.value = 1;
   const ret = ctx.createGain();
   ret.gain.value = p.return;
+  // Width: the wet channels go through two panners; +-1 keeps them apart (as before), 0 centres both (mono).
+  const widthIn = ctx.createChannelSplitter(2);
+  const panL = ctx.createStereoPanner();
+  panL.pan.value = 0 - p.width;
+  const panR = ctx.createStereoPanner();
+  panR.pan.value = p.width;
+  widthIn.connect(panL, 0);
+  widthIn.connect(panR, 1);
+  panL.connect(ret);
+  panR.connect(ret);
   let seed = 1;
   let timer = null;
   const retiring = new Map(); // timer -> voice that is fading out
@@ -125,7 +171,7 @@ export function createReverb(ctx, params) {
     gain.gain.value = startGain;
     input.connect(conv);
     conv.connect(gain);
-    gain.connect(ret);
+    gain.connect(widthIn);
     return { conv, gain };
   }
   const dropVoice = (v) => {
@@ -167,6 +213,11 @@ export function createReverb(ctx, params) {
         if (enabled) ret.gain.setTargetAtTime(v, ctx.currentTime, RAMP);
         return;
       }
+      if (key === 'width') {
+        panL.pan.setTargetAtTime(0 - v, ctx.currentTime, RAMP);
+        panR.pan.setTargetAtTime(v, ctx.currentTime, RAMP);
+        return;
+      }
       clearTimeout(timer);
       timer = setTimeout(rebuild, REBUILD_DEBOUNCE_MS);
     },
@@ -181,6 +232,7 @@ export function createReverb(ctx, params) {
       }
       retiring.clear();
       dropVoice(voice);
+      for (const n of [widthIn, panL, panR]) n.disconnect();
       input.disconnect();
       ret.disconnect();
     },
