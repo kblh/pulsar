@@ -1,0 +1,127 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { snap, toFraction, fromFraction, envLayout, nodePositions, envFromDrag, splitRoot, joinRoot } from '../js/hud.js';
+import { ROOTS } from '../js/options.js';
+
+const unit = { min: 0, max: 1, step: 0.05 };
+const near = (a, b, eps = 0.0101) => assert.ok(Math.abs(a - b) <= eps, `${a} vs ${b}`);
+
+test('snap clamps into the range', () => {
+  assert.equal(snap(5, unit), 1);
+  assert.equal(snap(-3, unit), 0);
+});
+
+test('snap rounds to the step grid that starts at min', () => {
+  assert.equal(snap(0.37, unit), 0.35);
+  assert.equal(snap(2.2, { min: 0.5, max: 30, step: 0.5 }), 2);
+  assert.equal(snap(2.3, { min: 0.5, max: 30, step: 0.5 }), 2.5);
+  assert.equal(snap(141.4, { min: 20, max: 300, step: 1 }), 141);
+});
+
+test('snap leaves no floating-point noise', () => {
+  assert.equal(snap(0.1 + 0.2, { min: 0, max: 1, step: 0.1 }), 0.3);
+  assert.equal(snap(0.7000000001, { min: 0, max: 1, step: 0.05 }), 0.7);
+});
+
+test('snap turns unusable input into min', () => {
+  for (const bad of [NaN, null, undefined, 'abc', '', Infinity, -Infinity, true, {}, []]) assert.equal(snap(bad, { min: 20, max: 300, step: 1 }), 20, String(bad));
+  assert.equal(snap('140', { min: 20, max: 300, step: 1 }), 140);
+});
+
+test('toFraction and fromFraction round-trip linear values', () => {
+  assert.equal(toFraction(0.5, { min: 0, max: 1 }), 0.5);
+  assert.equal(toFraction(160, { min: 20, max: 300 }), 0.5);
+  for (const v of [20, 57, 140, 299, 300]) assert.equal(fromFraction(toFraction(v, { min: 20, max: 300 }), { min: 20, max: 300, step: 1 }), v);
+  assert.equal(toFraction(999, { min: 0, max: 1 }), 1);
+  assert.equal(toFraction(-9, { min: 0, max: 1 }), 0);
+  assert.equal(toFraction(NaN, { min: 0, max: 1 }), 0);
+});
+
+test('log scale maps the ends to 0 and 1 and the middle to the geometric mean', () => {
+  const o = { min: 200, max: 12000, scale: 'log' };
+  assert.equal(toFraction(200, o), 0);
+  assert.equal(toFraction(12000, o), 1);
+  near(toFraction(Math.sqrt(200 * 12000), o), 0.5, 1e-9);
+  assert.equal(fromFraction(0, { ...o, step: 100 }), 200);
+  assert.equal(fromFraction(1, { ...o, step: 100 }), 12000);
+});
+
+test('fromFraction clamps fractions outside 0..1', () => {
+  assert.equal(fromFraction(-4, { min: 0, max: 1, step: 0.05 }), 0);
+  assert.equal(fromFraction(9, { min: 0, max: 1, step: 0.05 }), 1);
+  assert.equal(fromFraction(NaN, { min: 0, max: 1, step: 0.05 }), 0);
+});
+
+const layout = envLayout({ w: 320, h: 120, pad: 16 });
+const DEFAULT = { a: 0.01, d: 0.1, s: 0.5, r: 0.15 };
+
+test('envelope nodes sit where the envelope says', () => {
+  const p = nodePositions(DEFAULT, layout);
+  assert.ok(p.attack.x > p.start.x);
+  assert.equal(p.attack.y, 16);
+  near(p.decay.y, 16 + 0.5 * (120 - 32), 1e-9);
+  assert.equal(nodePositions({ ...DEFAULT, s: 1 }, layout).decay.y, 16);
+  assert.equal(nodePositions({ ...DEFAULT, s: 0 }, layout).decay.y, 120 - 16);
+  assert.ok(p.release.x > p.sustainEnd.x);
+  assert.equal(p.release.y, 120 - 16);
+  assert.ok(p.decay.x >= p.attack.x);
+});
+
+test('dragging a node back onto its own position keeps the value', () => {
+  for (const a of [0, 0.01, 0.5, 5]) {
+    const env = { ...DEFAULT, a };
+    near(envFromDrag('attack', nodePositions(env, layout).attack, env, layout).a, a);
+  }
+  for (const [d, s] of [[0, 0], [0.1, 0.5], [2, 1], [5, 0.25]]) {
+    const env = { ...DEFAULT, d, s };
+    const out = envFromDrag('decay', nodePositions(env, layout).decay, env, layout);
+    near(out.d, d);
+    near(out.s, s);
+  }
+  for (const r of [0, 0.15, 1, 5]) {
+    const env = { ...DEFAULT, r };
+    near(envFromDrag('release', nodePositions(env, layout).release, env, layout).r, r);
+  }
+});
+
+test('each node only reports its own keys', () => {
+  const p = nodePositions(DEFAULT, layout);
+  assert.deepEqual(Object.keys(envFromDrag('attack', p.attack, DEFAULT, layout)), ['a']);
+  assert.deepEqual(Object.keys(envFromDrag('decay', p.decay, DEFAULT, layout)).sort(), ['d', 's']);
+  assert.deepEqual(Object.keys(envFromDrag('release', p.release, DEFAULT, layout)), ['r']);
+});
+
+test('dragging far outside the graph stays inside the limits', () => {
+  for (const x of [-9999, 0, 9999]) {
+    for (const y of [-9999, 0, 9999]) {
+      const pt = { x, y };
+      const a = envFromDrag('attack', pt, DEFAULT, layout).a;
+      const { d, s } = envFromDrag('decay', pt, DEFAULT, layout);
+      const r = envFromDrag('release', pt, DEFAULT, layout).r;
+      for (const v of [a, d, r]) assert.ok(v >= 0 && v <= 5, `time ${v}`);
+      assert.ok(s >= 0 && s <= 1, `sustain ${s}`);
+    }
+  }
+});
+
+test('a short attack can be picked: one pixel moves it by well under 0.1 s', () => {
+  const x = nodePositions({ ...DEFAULT, a: 0.01 }, layout).attack.x;
+  const a1 = envFromDrag('attack', { x, y: 16 }, DEFAULT, layout).a;
+  const a2 = envFromDrag('attack', { x: x + 1, y: 16 }, DEFAULT, layout).a;
+  assert.ok(Math.abs(a2 - a1) < 0.1);
+  assert.ok(a1 > 0 && a1 < 0.05);
+});
+
+test('splitRoot reads the drone root and shows enharmonic spellings as ROOTS names', () => {
+  assert.deepEqual(splitRoot('C2'), { root: 'C', octave: 2 });
+  assert.deepEqual(splitRoot('Db2'), { root: 'C#', octave: 2 });
+  assert.deepEqual(splitRoot('D#3'), { root: 'Eb', octave: 3 });
+  assert.deepEqual(splitRoot('A#0'), { root: 'Bb', octave: 0 });
+  assert.deepEqual(splitRoot('C6'), { root: 'C', octave: 6 });
+  for (const bad of ['xyz', '', null, undefined, 42]) assert.equal(splitRoot(bad), null, String(bad));
+});
+
+test('joinRoot builds a note name and split/join round-trip for every root and octave 0-6', () => {
+  assert.equal(joinRoot('Eb', 3), 'Eb3');
+  for (const root of ROOTS) for (let octave = 0; octave <= 6; octave++) assert.deepEqual(splitRoot(joinRoot(root, octave)), { root, octave });
+});
