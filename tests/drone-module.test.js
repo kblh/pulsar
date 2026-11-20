@@ -405,3 +405,14 @@ test('drone osc 2: after the shutdown killed the voices mix moves nothing, and a
     mock.timers.reset();
   }
 });
+
+test('drone osc 2: a wave 2 chosen while mix was 0 is the one that plays when the mix comes back', () => {
+  const { m, log, step } = setup();
+  step(0.025);
+  m.setParam('mix', 0.5);
+  m.setParam('mix', 0);
+  m.setParam('wave2', 'square');
+  m.setParam('mix', 0.5);
+  assert.equal(m.params.wave2, 'square');
+  assert.deepEqual(log.oscs.map((o) => o.type), ['sine', 'square']);
+});

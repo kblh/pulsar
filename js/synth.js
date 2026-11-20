@@ -130,37 +130,47 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix
   osc.type = wave;
   osc.frequency.value = freq;
   gain.gain.value = 0;
-  let gainA = null; // A's level stage, inserted once a second oscillator exists
+  let levelA = null; // a level stage in front of A, only for a voice that was built with a second oscillator
+  let trim = null; // for a voice that already sounds: a copy of A with a negative gain that brings A down to its share
   let oscB = null;
   let gainB = null;
+  let targetB = 0; // where B's level is heading: a wave change is silent only while B is muted
   let released = false;
 
-  function addSecond(start, w2, dt, levelA = 1, levelB = 0) {
-    gainA = ctx.createGain();
-    gainA.gain.value = levelA; // for a voice that already sounds this is A's old level (1), so inserting the stage is inaudible
-    osc.disconnect();
-    osc.connect(gainA).connect(gain);
+  function makeSecond(start, w2, dt, level) {
     oscB = ctx.createOscillator();
     oscB.type = typeof w2 === 'string' ? w2 : wave;
     oscB.frequency.value = freq;
     oscB.detune.value = detuneOf(dt);
     gainB = ctx.createGain();
-    gainB.gain.value = levelB; // for a voice that already sounds B fades in from silence (0)
+    gainB.gain.value = level;
+    targetB = level;
     oscB.connect(gainB).connect(gain);
     oscB.start(start);
   }
 
-  osc.connect(gain).connect(dest);
   const t = ctx.currentTime;
+  const first = oscMix(mix);
+  if (first.b > 0) {
+    levelA = ctx.createGain();
+    levelA.gain.value = first.a;
+    osc.connect(levelA).connect(gain);
+  } else {
+    osc.connect(gain);
+  }
+  gain.connect(dest);
   gain.gain.setTargetAtTime(peak, t, fade / 4);
   osc.start(t);
-  const start = oscMix(mix);
-  if (start.b > 0) addSecond(t, wave2, detune, start.a, start.b);
+  if (first.b > 0) makeSecond(t, wave2, detune, first.b);
+
+  /** Where a second oscillator started `now` is in phase with A, which has run since `t`: a whole number of cycles later. */
+  const alignedStart = (now) => (freq > 0 ? t + Math.ceil(Math.max(0, now - t) * freq - 1e-6) / freq : now);
 
   const freeA = () => {
     osc.disconnect();
     gain.disconnect();
-    gainA?.disconnect();
+    levelA?.disconnect();
+    trim?.disconnect();
   };
   const freeB = () => {
     oscB?.disconnect();
@@ -176,9 +186,17 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix
       const { a, b } = oscMix(m);
       if (!oscB) {
         if (released || b <= 0) return; // a fading voice never gets a new oscillator
-        addSecond(now, w2, dt);
+        // Nothing is disconnected: A keeps feeding the voice and a trim path takes its level down (a gain of -b on top of 1).
+        trim = ctx.createGain();
+        trim.gain.value = 0;
+        osc.connect(trim).connect(gain);
+        makeSecond(alignedStart(now), w2, dt, 0);
+      } else if (typeof w2 === 'string' && oscB.type !== w2 && targetB <= 0) {
+        oscB.type = w2; // B is muted, so changing its wave cannot click
       }
-      gainA.gain.setTargetAtTime(a, now, MIX_RAMP);
+      targetB = b;
+      if (levelA) levelA.gain.setTargetAtTime(a, now, MIX_RAMP);
+      else trim.gain.setTargetAtTime(0 - b, now, MIX_RAMP); // A * (1 + -b) = A * a, exactly
       gainB.gain.setTargetAtTime(b, now, MIX_RAMP);
       oscB.detune.setTargetAtTime(detuneOf(dt), now, MIX_RAMP);
     },

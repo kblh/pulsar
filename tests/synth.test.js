@@ -87,7 +87,7 @@ test('a drone voice without a second oscillator is built as before', () => {
   assert.equal(firstValue(kinds(ctx, 'gain')[0].gain), 0);
 });
 
-test('setMix on such a voice adds the second oscillator without a jump, then only moves levels', () => {
+test('setMix on such a voice adds the second oscillator without ever disconnecting A, then only moves levels', () => {
   const ctx = stubCtx();
   const voice = createDroneVoice(ctx, {}, { freq: 110, wave: 'sine', peak: 0.5, fade: 4 });
   const voiceGain = kinds(ctx, 'gain')[0];
@@ -95,26 +95,62 @@ test('setMix on such a voice adds the second oscillator without a jump, then onl
   const [a, b] = kinds(ctx, 'osc');
   assert.equal(kinds(ctx, 'osc').length, 2);
   assert.equal(b.type, 'square');
-  const [, gA, gB] = kinds(ctx, 'gain');
-  assert.ok(a.connections.includes(gA) && gA.connections.includes(voiceGain), 'A now runs through its level');
-  assert.ok(b.connections.includes(gB) && gB.connections.includes(voiceGain));
-  assert.equal(firstValue(gA.gain), 1, 'A starts at its old level, so inserting the stage does not click');
+  const [, trim, gB] = kinds(ctx, 'gain');
+  assert.equal(a.disconnected, 0, 'A is never taken out of the graph of a sounding voice (that could gap one render block)');
+  assert.ok(a.connections.includes(voiceGain), 'A still feeds the voice directly');
+  assert.ok(a.connections.includes(trim) && trim.connections.includes(voiceGain), 'a trim path with a negative gain brings A down to its share');
+  assert.equal(firstValue(trim.gain), 0, 'the trim starts at 0, so adding it is inaudible');
+  assert.deepEqual(lastTarget(trim.gain).slice(0, 2), ['target', -0.5]);
   assert.equal(firstValue(gB.gain), 0, 'B fades in from silence');
-  assert.deepEqual(lastTarget(gA.gain).slice(0, 2), ['target', 0.5]);
   assert.deepEqual(lastTarget(gB.gain).slice(0, 2), ['target', 0.5]);
   assert.deepEqual(lastTarget(b.detune).slice(0, 2), ['target', 20]);
   assert.equal(b.starts.length, 1);
   voice.setMix({ mix: 0.2, detune: -10, wave2: 'square' });
   assert.equal(kinds(ctx, 'osc').length, 2);
   assert.equal(kinds(ctx, 'gain').length, 3);
-  assert.deepEqual(lastTarget(gA.gain).slice(0, 2), ['target', 0.8]);
+  assert.deepEqual(lastTarget(trim.gain).slice(0, 2), ['target', -0.2]);
   assert.deepEqual(lastTarget(gB.gain).slice(0, 2), ['target', 0.2]);
   assert.deepEqual(lastTarget(b.detune).slice(0, 2), ['target', -10]);
   voice.setMix({ mix: 0, detune: 0, wave2: 'square' });
   assert.deepEqual(lastTarget(gB.gain).slice(0, 2), ['target', 0]);
-  assert.deepEqual(lastTarget(gA.gain).slice(0, 2), ['target', 1]);
+  assert.deepEqual(lastTarget(trim.gain).slice(0, 2), ['target', 0]);
   assert.equal(kinds(ctx, 'osc').length, 2);
-  for (const g of [gA, gB]) assert.equal(g.gain.calls.filter((c) => c[0] === 'value').length, 1, 'no .value after creation');
+  for (const g of [trim, gB]) assert.equal(g.gain.calls.filter((c) => c[0] === 'value').length, 1, 'no .value after creation');
+  assert.equal(a.disconnected, 0);
+});
+
+test('a second oscillator added to a sounding voice starts on the period grid of A, so the two are in phase', () => {
+  const ctx = stubCtx();
+  let now = 1;
+  Object.defineProperty(ctx, 'currentTime', { get: () => now });
+  const voice = createDroneVoice(ctx, {}, { freq: 100, wave: 'sine', peak: 0.5, fade: 4 });
+  now = 1.0234;
+  voice.setMix({ mix: 0.5, detune: 0, wave2: 'sine' });
+  const start = kinds(ctx, 'osc')[1].starts[0];
+  assert.ok(start >= now - 1e-9, 'not in the past');
+  assert.ok(start - now <= 0.01 + 1e-9, 'at most one period of 100 Hz later');
+  const cycles = (start - 1) * 100;
+  assert.ok(Math.abs(cycles - Math.round(cycles)) < 1e-6, `a whole number of cycles after A started, got ${cycles}`);
+});
+
+test('a voice built with mix > 0 starts both oscillators together', () => {
+  const ctx = stubCtx();
+  createDroneVoice(ctx, {}, { freq: 100, wave: 'sine', peak: 0.5, fade: 4, wave2: 'square', mix: 0.5 });
+  const [a, b] = kinds(ctx, 'osc');
+  assert.deepEqual(a.starts, b.starts);
+});
+
+test('a muted second oscillator takes a new wave when the mix comes back, an audible one keeps its wave', () => {
+  const ctx = stubCtx();
+  const voice = createDroneVoice(ctx, {}, { freq: 110, wave: 'sine', peak: 0.5, fade: 4, wave2: 'square', mix: 0.5 });
+  const b = kinds(ctx, 'osc')[1];
+  voice.setMix({ mix: 0.5, detune: 0, wave2: 'triangle' });
+  assert.equal(b.type, 'square', 'switching the wave of an audible oscillator would click');
+  voice.setMix({ mix: 0, detune: 0, wave2: 'triangle' });
+  assert.equal(b.type, 'square', 'it is still fading out');
+  voice.setMix({ mix: 0.5, detune: 0, wave2: 'triangle' });
+  assert.equal(b.type, 'triangle', 'it was muted, so the new wave comes in silently');
+  assert.equal(kinds(ctx, 'osc').length, 2);
 });
 
 test('setMix with mix 0 on a voice without B does nothing; out-of-range values are kept in range', () => {
