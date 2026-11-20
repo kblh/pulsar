@@ -71,6 +71,7 @@ export function createDelay(ctx, params) {
   feedback.connect(delay);
 
   const ramp = (param, v) => param.setTargetAtTime(v, ctx.currentTime, RAMP);
+  let enabled = true;
   const tailMs = () =>
     p.feedback <= 0 ? p.time : Math.min(MAX_TAIL_MS, (p.time * Math.log(0.001)) / Math.log(p.feedback));
 
@@ -79,6 +80,12 @@ export function createDelay(ctx, params) {
     params: p,
     input,
     output: ret,
+    get enabled() { return enabled; },
+    /** Bypass: mutes the return only, so sends keep flowing and nothing clicks on the way back. */
+    setEnabled(on) {
+      enabled = Boolean(on);
+      ramp(ret.gain, enabled ? p.return : 0);
+    },
     setParam(key, value) {
       const v = clampFxParam('delay', key, value);
       if (v === null) return;
@@ -86,7 +93,7 @@ export function createDelay(ctx, params) {
       if (key === 'time') ramp(delay.delayTime, v / 1000);
       else if (key === 'feedback') ramp(feedback.gain, v);
       else if (key === 'tone') ramp(tone.frequency, v);
-      else ramp(ret.gain, v);
+      else if (enabled) ramp(ret.gain, v);
     },
     tailMs,
     dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, tailMs() / 4000),
@@ -105,6 +112,7 @@ export function createReverb(ctx, params) {
   let seed = 1;
   let timer = null;
   const retiring = new Map(); // timer -> voice that is fading out
+  let enabled = true;
 
   function makeVoice(startGain) {
     const conv = ctx.createConvolver();
@@ -146,12 +154,17 @@ export function createReverb(ctx, params) {
     params: p,
     input,
     output: ret,
+    get enabled() { return enabled; },
+    setEnabled(on) {
+      enabled = Boolean(on);
+      ret.gain.setTargetAtTime(enabled ? p.return : 0, ctx.currentTime, RAMP);
+    },
     setParam(key, value) {
       const v = clampFxParam('reverb', key, value);
       if (v === null) return;
       p[key] = v;
       if (key === 'return') {
-        ret.gain.setTargetAtTime(v, ctx.currentTime, RAMP);
+        if (enabled) ret.gain.setTargetAtTime(v, ctx.currentTime, RAMP);
         return;
       }
       clearTimeout(timer);

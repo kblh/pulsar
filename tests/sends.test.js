@@ -163,3 +163,16 @@ test('addEffect passes params to the effect and names it after its type', (t) =>
   assert.equal(fx.name, 'delay');
   assert.equal(routing.addEffect('delay', { feedback: 7 }).params.feedback, 0.9);
 });
+
+test('setFxEnabled passes the bypass to the effect, and a bypassed effect still disconnects after removal', (t) => {
+  const { routing } = setup(t);
+  const fx = routing.addEffect('delay');
+  routing.setFxEnabled(fx, false);
+  assert.equal(fx.enabled, false);
+  let disconnected = 0;
+  const realDisconnect = fx.disconnect;
+  fx.disconnect = () => { disconnected++; realDisconnect(); };
+  routing.removeEffect(fx.id);
+  t.mock.timers.tick(fx.tailMs() + 101);
+  assert.equal(disconnected, 1);
+});

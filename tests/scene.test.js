@@ -174,3 +174,18 @@ test('validateScene limits pattern string lengths', () => {
   assert.equal(scene.modules[0].params.rhythm.length, 64);
   assert.equal(scene.modules[1].params.voices.kick.length, 64);
 });
+
+test('scene keeps the bypass state of effects and reads old scenes as enabled', () => {
+  const { modules, effects } = sample();
+  effects[1].enabled = false;
+  const scene = serializeScene({ modules, effects });
+  assert.deepEqual(scene.effects.map((e) => e.enabled), [true, false]);
+  const back = validateScene(JSON.parse(JSON.stringify(scene))).scene;
+  assert.deepEqual(back.effects.map((e) => e.enabled), [true, false]);
+  const old = validateScene({ version: 1, effects: [{ type: 'delay', params: {} }], modules: [] }).scene;
+  assert.equal(old.effects[0].enabled, true);
+  for (const bad of ['no', 0, null, 1, {}]) {
+    const s = validateScene({ version: 1, effects: [{ type: 'delay', enabled: bad, params: {} }], modules: [] }).scene;
+    assert.equal(s.effects[0].enabled, true, String(bad));
+  }
+});

@@ -53,6 +53,7 @@ export function createRouting(ctx, master) {
       return fx;
     },
     setFxParam: (fx, key, value) => fx.setParam(key, value),
+    setFxEnabled: (fx, on) => fx.setEnabled(on),
     removeEffect(id) {
       const i = effects.findIndex((e) => e.id === id);
       if (i < 0) return;

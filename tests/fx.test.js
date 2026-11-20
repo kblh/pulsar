@@ -197,3 +197,46 @@ test('delay lowpass in the feedback loop has no resonance peak that makes the lo
     assert.ok(fx.params.feedback * lowpassPeak(tone, q) < 1, `tone ${tone}: loop gain ${fx.params.feedback * lowpassPeak(tone, q)}`);
   }
 });
+
+const lastTarget = (g) => g.gain.calls.filter((c) => c[0] === 'target').at(-1);
+
+test('bypass: setEnabled ramps the return to 0 and back without touching .value', () => {
+  for (const make of [createDelay, createReverb]) {
+    const ctx = stubCtx();
+    const fx = make(ctx, { return: 0.6 });
+    assert.equal(fx.enabled, true);
+    const before = valueCalls(ctx);
+    fx.setEnabled(false);
+    assert.equal(fx.enabled, false);
+    assert.deepEqual(lastTarget(fx.output).slice(0, 2), ['target', 0]);
+    fx.setEnabled(true);
+    assert.equal(fx.enabled, true);
+    assert.deepEqual(lastTarget(fx.output).slice(0, 2), ['target', 0.6]);
+    assert.deepEqual(valueCalls(ctx), before);
+  }
+});
+
+test('bypass: changing return while disabled stays muted and applies on enable', () => {
+  for (const make of [createDelay, createReverb]) {
+    const ctx = stubCtx();
+    const fx = make(ctx);
+    fx.setEnabled(false);
+    const calls = fx.output.gain.calls.length;
+    fx.setParam('return', 0.2);
+    assert.equal(fx.params.return, 0.2);
+    assert.equal(fx.output.gain.calls.length, calls);
+    fx.setEnabled(true);
+    assert.deepEqual(lastTarget(fx.output).slice(0, 2), ['target', 0.2]);
+  }
+});
+
+test('bypass: a reverb rebuild while disabled leaves the muted return alone', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const ctx = stubCtx();
+  const fx = createReverb(ctx);
+  fx.setEnabled(false);
+  const calls = fx.output.gain.calls.length;
+  fx.setParam('decay', 5);
+  t.mock.timers.tick(200);
+  assert.equal(fx.output.gain.calls.length, calls);
+});

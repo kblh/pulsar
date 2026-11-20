@@ -22,6 +22,7 @@ export function createEngine() {
     effects: routing.effects,
     addEffect: routing.addEffect,
     setFxParam: routing.setFxParam,
+    setFxEnabled: routing.setFxEnabled,
     removeEffect: routing.removeEffect,
     setSend: routing.setSend,
     stopAll: () => transport.stopAll(),

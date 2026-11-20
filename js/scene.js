@@ -31,7 +31,7 @@ export function serializeScene({ modules, effects, stoppedByTransport = () => fa
   const index = new Map(effects.map((fx, i) => [fx.id, i]));
   return {
     version: 1,
-    effects: effects.map((fx) => ({ type: fx.type, name: fx.name ?? fx.type, params: clone(fx.params) })),
+    effects: effects.map((fx) => ({ type: fx.type, name: fx.name ?? fx.type, enabled: fx.enabled !== false, params: clone(fx.params) })),
     modules: modules.map((m) => ({
       type: m.type,
       name: m.name ?? m.type,
@@ -112,7 +112,7 @@ export function validateScene(data) {
       }
     }
     remap.set(i, effects.length);
-    effects.push({ type: e.type, name: cleanName(e.name, e.type), params });
+    effects.push({ type: e.type, name: cleanName(e.name, e.type), enabled: typeof e.enabled === 'boolean' ? e.enabled : true, params });
   });
 
   const modules = [];
@@ -177,6 +177,7 @@ export function applyScene(engine, scene, ui) {
     try {
       fx = engine.addEffect(e.type, e.params);
       fx.name = e.name;
+      if (!e.enabled) engine.setFxEnabled(fx, false);
       ui.addFxPanel(fx);
       return fx;
     } catch {

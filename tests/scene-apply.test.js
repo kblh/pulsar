@@ -30,6 +30,7 @@ function fakeEngine({ stopped = false, failAddModule = [], failSetVolume = [], f
     setPan(m, v) { m.pan = v; log.push('pan'); },
     setSend(m, slot, patch) { Object.assign(m.sends[slot], patch); log.push('send'); },
     toggle(m) { m.running = !m.running; log.push(`toggle:${m.type}`); },
+    setFxEnabled(fx, on) { fx.enabled = on; log.push(`fxEnabled:${fx.id}:${on}`); },
   };
   return e;
 }
@@ -143,4 +144,10 @@ test('loading twice leaves only the second scene', () => {
   applyScene(e, scene([mod('rhythmic')], [{ type: 'reverb', params: {} }]), ui);
   assert.deepEqual(e.modules.map((m) => m.type), ['rhythmic']);
   assert.deepEqual(e.effects.map((f) => f.type), ['reverb']);
+});
+
+test('applyScene bypasses only the effects saved as disabled', () => {
+  const e = fakeEngine();
+  applyScene(e, scene([], [{ type: 'delay', params: {} }, { type: 'reverb', enabled: false, params: {} }]), fakeUi(e));
+  assert.deepEqual(e.log.filter((l) => l.startsWith('fxEnabled')), ['fxEnabled:fx2:false']);
 });
