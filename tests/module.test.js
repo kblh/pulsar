@@ -127,3 +127,50 @@ test('setParam env replaces the env object instead of mutating the old one', () 
   assert.notEqual(m.params.env, old);
   assert.deepEqual(old, snapshot);
 });
+
+const oscCount = (created) => created.filter((k) => k === 'createOscillator').length;
+
+test('melodic osc 2: defaults and validation of wave2, mix and detune', () => {
+  const m = createMelodicModule();
+  assert.deepEqual([m.params.wave2, m.params.mix, m.params.detune], ['sawtooth', 0, 0]);
+  m.setParam('mix', 9); assert.equal(m.params.mix, 1);
+  m.setParam('mix', -2); assert.equal(m.params.mix, 0);
+  m.setParam('mix', '0.4'); assert.equal(m.params.mix, 0.4);
+  for (const bad of [NaN, 'abc', null, true, undefined, {}]) { m.setParam('mix', bad); assert.equal(m.params.mix, 0.4, String(bad)); }
+  m.setParam('detune', 1e9); assert.equal(m.params.detune, 50);
+  m.setParam('detune', -1e9); assert.equal(m.params.detune, -50);
+  m.setParam('detune', 12.6); assert.equal(m.params.detune, 13);
+  for (const bad of [NaN, 'abc', null, true, undefined]) { m.setParam('detune', bad); assert.equal(m.params.detune, 13, String(bad)); }
+  m.setParam('wave2', 'square'); assert.equal(m.params.wave2, 'square');
+  for (const bad of ['evil', 5, null, undefined, '']) { m.setParam('wave2', bad); assert.equal(m.params.wave2, 'square', String(bad)); }
+  const made = createMelodicModule({ mix: 9, detune: 'abc', wave2: 'evil' });
+  assert.deepEqual([made.params.wave2, made.params.mix, made.params.detune], ['sawtooth', 1, 0]);
+});
+
+test('melodic osc 2: every new note follows the current mix', () => {
+  const count = (mix) => {
+    const { ctx, created } = stubCtx();
+    const m = createMelodicModule({ bpm: 240, rhythm: 'x...x...x...x...' });
+    if (mix !== undefined) m.setParam('mix', mix);
+    run(m, ctx, 0.6);
+    return oscCount(created);
+  };
+  const plain = count();
+  assert.ok(plain >= 2);
+  assert.equal(count(0), plain, 'mix 0 builds the same voices as a module that never heard of mix');
+  assert.equal(count(0.5), plain * 2, 'mix > 0 plays a second oscillator with every note');
+  const { ctx, created } = stubCtx();
+  const m = createMelodicModule({ bpm: 240, rhythm: 'x...x...x...x...' });
+  m.setParam('mix', 0.5);
+  m.setParam('mix', 0);
+  run(m, ctx, 0.6);
+  assert.equal(oscCount(created), plain);
+});
+
+test('the rhythmic module has no osc 2 parameters and ignores them', () => {
+  const m = createRhythmicModule();
+  for (const k of ['wave2', 'mix', 'detune']) assert.ok(!(k in m.params), k);
+  m.setParam('mix', 0.5);
+  m.setParam('wave2', 'square');
+  assert.ok(!('mix' in m.params) && !('wave2' in m.params));
+});

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { snap, toFraction, fromFraction, envLayout, nodePositions, envFromDrag, nearestNode, valueChars, splitRoot, joinRoot } from '../js/hud.js';
+import { snap, toFraction, fromFraction, envLayout, nodePositions, envFromDrag, nearestNode, valueChars, formatCents, splitRoot, joinRoot } from '../js/hud.js';
 import { ROOTS } from '../js/options.js';
 
 const unit = { min: 0, max: 1, step: 0.05 };
@@ -153,4 +153,14 @@ test('valueChars is the widest text a slider will ever show, so its width can be
   const timeFormat = (v) => `${v} ms`;
   assert.equal(valueChars(timeFormat, time), widest(time, timeFormat));
   assert.equal(valueChars((v) => `${Math.round(v * 100)}%`, { min: 0, max: 1, step: 0.01 }), 4);
+});
+
+test('formatCents shows a signed whole number of cents', () => {
+  assert.equal(formatCents(0), '0 ct');
+  assert.equal(formatCents(12), '+12 ct');
+  assert.equal(formatCents(-7), '\u22127 ct');
+  assert.equal(formatCents(50), '+50 ct');
+  assert.equal(formatCents(-50), '\u221250 ct');
+  assert.equal(formatCents(12.4), '+12 ct');
+  assert.equal(formatCents(-0.2), '0 ct');
 });

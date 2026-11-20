@@ -6,6 +6,7 @@ import { mutationEvery } from './evolution.js';
 import { mutateMelody, randomMelody } from './melody.js';
 import { mutateRhythm, parsePattern, RHYTHM_PRESETS } from './rhythm.js';
 import { playNote, playDrum, createDroneVoice, DEFAULT_ENV } from './synth.js';
+import { WAVES } from './options.js';
 
 let nextId = 1;
 const DRUMS = ['kick', 'snare', 'hat'];
@@ -20,8 +21,30 @@ const LIMITS = {
   rhythmMod: [1, 10, false],
 };
 
+const finiteNum = (v) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(Number(v));
+
+/** The second oscillator's parameters; unusable values leave `params` as they are. */
+function applyOscParam(params, key, value) {
+  if (key === 'wave2') {
+    if (WAVES.includes(value)) params.wave2 = value;
+  } else if (key === 'mix') {
+    if (finiteNum(value)) params.mix = clamp(Number(value), 0, 1);
+  } else if (key === 'detune') {
+    if (finiteNum(value)) params.detune = clamp(Math.round(Number(value)), -50, 50);
+  }
+}
+
+/** Gives a module the osc 2 parameters at their defaults and cleans any that were passed in as overrides. */
+function withOscParams(params, overrides) {
+  const out = { ...params, wave2: 'sawtooth', mix: 0, detune: 0 };
+  for (const k of ['wave2', 'mix', 'detune']) if (k in overrides) applyOscParam(out, k, overrides[k]);
+  return out;
+}
+
 function applyParam(m, key, value) {
-  if (key in LIMITS) {
+  if (key === 'wave2' || key === 'mix' || key === 'detune') {
+    if (key in m.params) applyOscParam(m.params, key, value); // the rhythmic module has none
+  } else if (key in LIMITS) {
     const n = Number(value);
     if (!Number.isFinite(n)) return;
     const [lo, hi, float] = LIMITS[key];
@@ -111,6 +134,7 @@ export function createMelodicModule(overrides = {}) {
     evolution: 'drift',
     ...overrides,
   };
+  Object.assign(params, withOscParams(params, overrides));
   const pool = buildPitchPool(params.pitchConfig);
   const state = {
     melody: evolved(randomMelody(16, pool.length, Math.random)),
@@ -124,6 +148,9 @@ export function createMelodicModule(overrides = {}) {
       time,
       duration: stepDuration(mod.params.bpm) * 0.9,
       wave: mod.params.wave,
+      wave2: mod.params.wave2,
+      mix: mod.params.mix,
+      detune: mod.params.detune,
       env: mod.params.env,
     });
   });
@@ -186,6 +213,7 @@ export function createDroneModule(overrides = {}) {
     fade: 4,
     ...overrides,
   };
+  Object.assign(params, withOscParams(params, overrides));
   params.fade = clampFade(params.fade);
   const extra = Number(params.maxExtra);
   params.maxExtra = Number.isFinite(extra) ? clamp(Math.round(extra), 0, MAX_EXTRA_LIMIT) : 2;
@@ -218,14 +246,29 @@ export function createDroneModule(overrides = {}) {
     },
   };
 
-  const spawn = (midi, peak) =>
-    createDroneVoice(env.ctx, env.dest, { freq: midiToFreq(midi), wave: params.wave, peak, fade: params.fade });
+  const live = new Set(); // voices that still sound, fading ones included: mix and detune move all of them
+  const spawn = (midi, peak) => {
+    const voice = createDroneVoice(env.ctx, env.dest, {
+      freq: midiToFreq(midi),
+      wave: params.wave,
+      wave2: params.wave2,
+      mix: params.mix,
+      detune: params.detune,
+      peak,
+      fade: params.fade,
+    });
+    live.add(voice);
+    return voice;
+  };
 
   const isReleasing = (midi) => (releasing.get(midi) ?? 0) > 0;
 
   const release = (midi, voice) => {
     releasing.set(midi, (releasing.get(midi) ?? 0) + 1);
-    voice.release(params.fade, () => releasing.set(midi, releasing.get(midi) - 1));
+    voice.release(params.fade, () => {
+      releasing.set(midi, releasing.get(midi) - 1);
+      live.delete(voice);
+    });
   };
 
   const releaseExtra = (midi) => {
@@ -280,8 +323,14 @@ export function createDroneModule(overrides = {}) {
     shutdownTimer = setTimeout(() => {
       shutdownTimer = null;
       if (m.running || m.disposed) return;
-      if (rootVoice) rootVoice.kill();
-      for (const v of active.values()) v.kill();
+      if (rootVoice) {
+        live.delete(rootVoice);
+        rootVoice.kill();
+      }
+      for (const v of active.values()) {
+        live.delete(v);
+        v.kill();
+      }
       rootVoice = null;
       active.clear();
       nextChangeAt = null;
@@ -301,20 +350,31 @@ export function createDroneModule(overrides = {}) {
   };
   m.disposeDelay = () => params.fade * 2000 + 500;
 
+  // Switching osc.type in place would be an instant jump: crossfade to new voices instead.
+  const respawnVoices = () => {
+    if (!env || m.disposed) return;
+    if (rootVoice) {
+      const old = rootVoice;
+      rootVoice = spawn(rootMidi, ROOT_PEAK);
+      release(rootMidi, old);
+    }
+    for (const [midi, old] of [...active]) {
+      active.set(midi, spawn(midi, EXTRA_PEAK));
+      release(midi, old);
+    }
+  };
+
   m.setParam = (key, value) => {
     if (key === 'wave') {
       params.wave = value;
-      if (!env || m.disposed) return;
-      // Switching osc.type in place would be an instant jump: crossfade to new voices instead.
-      if (rootVoice) {
-        const old = rootVoice;
-        rootVoice = spawn(rootMidi, ROOT_PEAK);
-        release(rootMidi, old);
-      }
-      for (const [midi, old] of [...active]) {
-        active.set(midi, spawn(midi, EXTRA_PEAK));
-        release(midi, old);
-      }
+      respawnVoices();
+    } else if (key === 'wave2') {
+      const before = params.wave2;
+      applyOscParam(params, 'wave2', value);
+      if (params.mix > 0 && params.wave2 !== before) respawnVoices(); // at mix 0 it only waits for the second oscillator
+    } else if (key === 'mix' || key === 'detune') {
+      applyOscParam(params, key, value);
+      for (const voice of live) voice.setMix({ mix: params.mix, detune: params.detune, wave2: params.wave2 });
     } else if (key === 'rate') {
       const n = Number(value);
       if (Number.isFinite(n)) {

@@ -220,3 +220,34 @@ test('validateScene accepts a bitcrusher and clamps its parameters', () => {
   assert.deepEqual(scene.effects[0].params, { bits: 16, rate: 1, return: 0.3 });
   assert.equal(scene.effects[0].enabled, false);
 });
+
+const oscModule = (type, params) => ({ type, name: type, params, volume: 1, pan: 0, running: true, sends: [] });
+
+test('validateScene keeps wave 2, mix and detune of melodic and drone modules and clamps them', () => {
+  const { scene } = validateScene({
+    version: 1,
+    effects: [],
+    modules: [
+      oscModule('melodic', { wave2: 'square', mix: 0.4, detune: -12 }),
+      oscModule('drone', { wave2: 'triangle', mix: 1, detune: 50 }),
+      oscModule('melodic', { wave2: 'evil', mix: 9, detune: 1e9 }),
+      oscModule('drone', { wave2: 5, mix: 'abc', detune: NaN }),
+      oscModule('melodic', { mix: -3, detune: 12.6 }),
+    ],
+  });
+  assert.deepEqual([scene.modules[0].params.wave2, scene.modules[0].params.mix, scene.modules[0].params.detune], ['square', 0.4, -12]);
+  assert.deepEqual([scene.modules[1].params.wave2, scene.modules[1].params.mix, scene.modules[1].params.detune], ['triangle', 1, 50]);
+  assert.deepEqual([scene.modules[2].params.wave2, scene.modules[2].params.mix, scene.modules[2].params.detune], [undefined, 1, 50]);
+  assert.deepEqual([scene.modules[3].params.wave2, scene.modules[3].params.mix, scene.modules[3].params.detune], [undefined, undefined, undefined]);
+  assert.deepEqual([scene.modules[4].params.mix, scene.modules[4].params.detune], [0, 13]);
+});
+
+test('validateScene drops osc 2 keys on a rhythmic module and takes a scene without them as it is', () => {
+  const { scene } = validateScene({
+    version: 1,
+    effects: [],
+    modules: [oscModule('rhythmic', { bpm: 100, wave2: 'square', mix: 0.5, detune: 5 }), oscModule('melodic', { bpm: 100 }), oscModule('drone', {})],
+  });
+  for (const k of ['wave2', 'mix', 'detune']) assert.ok(!(k in scene.modules[0].params), k);
+  for (const i of [1, 2]) for (const k of ['wave2', 'mix', 'detune']) assert.ok(!(k in scene.modules[i].params), `old scene module ${i} ${k}`);
+});

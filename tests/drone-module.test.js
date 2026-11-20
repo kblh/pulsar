@@ -13,6 +13,7 @@ function makeCtx() {
     createOscillator() {
       const o = {
         type: '', frequency: { value: 0 }, started: [], stopped: [], disconnected: false, onended: null,
+        detune: { calls: [], setTargetAtTime(...a) { this.calls.push(['target', ...a]); }, set value(v) { this.calls.push(['value', v]); } },
         connect: (x) => x, disconnect() { o.disconnected = true; },
         start: (t) => o.started.push(t), stop: (t) => o.stopped.push(t),
       };
@@ -295,4 +296,112 @@ test('changing rate takes effect immediately', () => {
   // can come 2.1 s later at the earliest (and might remove the tone again), so look before that.
   step(4);
   assert.ok(m.state.sounding().length > 1);
+});
+
+const lastDetune = (o) => o.detune.calls.filter((c) => c[0] === 'target').at(-1)?.[1];
+
+test('drone osc 2: defaults are a plain voice and values are validated', () => {
+  const m = createDroneModule();
+  assert.deepEqual([m.params.wave2, m.params.mix, m.params.detune], ['sawtooth', 0, 0]);
+  m.setParam('mix', 9); assert.equal(m.params.mix, 1);
+  m.setParam('mix', -2); assert.equal(m.params.mix, 0);
+  m.setParam('mix', '0.4'); assert.equal(m.params.mix, 0.4);
+  for (const bad of [NaN, 'abc', null, true, undefined, {}]) { m.setParam('mix', bad); assert.equal(m.params.mix, 0.4, String(bad)); }
+  m.setParam('detune', 1e9); assert.equal(m.params.detune, 50);
+  m.setParam('detune', -1e9); assert.equal(m.params.detune, -50);
+  m.setParam('detune', 12.6); assert.equal(m.params.detune, 13);
+  for (const bad of [NaN, 'abc', null, true, undefined]) { m.setParam('detune', bad); assert.equal(m.params.detune, 13, String(bad)); }
+  m.setParam('wave2', 'square'); assert.equal(m.params.wave2, 'square');
+  for (const bad of ['evil', 5, null, undefined, '']) { m.setParam('wave2', bad); assert.equal(m.params.wave2, 'square', String(bad)); }
+  const made = createDroneModule({ mix: 9, detune: 'abc', wave2: 'evil' });
+  assert.deepEqual([made.params.wave2, made.params.mix, made.params.detune], ['sawtooth', 1, 0]);
+});
+
+test('drone osc 2: a voice created with mix > 0 has both oscillators', () => {
+  const { log, step } = setup({ mix: 0.4, wave2: 'square', detune: 9 });
+  step(0.025);
+  assert.equal(log.oscs.length, 2);
+  assert.deepEqual([log.oscs[0].type, log.oscs[1].type], ['sine', 'square']);
+  assert.equal(log.oscs[1].detune.calls.find((c) => c[0] === 'value')[1], 9);
+});
+
+test('drone osc 2: moving mix and detune is heard at once on the sounding voice', () => {
+  const { m, log, step } = setup();
+  step(0.025);
+  assert.equal(log.oscs.length, 1);
+  m.setParam('mix', 0.5);
+  assert.equal(log.oscs.length, 2);
+  assert.equal(log.oscs[1].type, 'sawtooth');
+  m.setParam('detune', 20);
+  assert.equal(lastDetune(log.oscs[1]), 20);
+  const gains = log.gains; // out, voice, A level, B level
+  m.setParam('mix', 0);
+  assert.equal(gains[3].calls.filter((c) => c[0] === 'target').at(-1)[1], 0);
+  assert.equal(log.oscs.length, 2);
+});
+
+test('drone osc 2: every sounding voice follows, fading ones keep following, ended ones stop', () => {
+  const { m, log, step } = setup({ maxExtra: 2, rate: 10 });
+  for (let i = 0; i < 80 && m.state.sounding().length < 2; i++) step(1);
+  assert.ok(m.state.sounding().length >= 2, 'extras exist');
+  const before = log.oscs.length;
+  m.setParam('mix', 0.5);
+  assert.equal(log.oscs.length - before, m.state.sounding().length, 'each sounding voice got a second oscillator');
+  for (let i = 0; i < 200 && !m.state.releasing().length; i++) step(1);
+  assert.ok(m.state.releasing().length > 0, 'a voice is fading out');
+  const total = log.oscs.length;
+  m.setParam('detune', 15);
+  assert.equal(log.oscs.length, total, 'fading voices get no new oscillator');
+  const followers = log.oscs.filter((o) => lastDetune(o) === 15);
+  assert.ok(followers.length >= m.state.sounding().length + m.state.releasing().length, 'sounding and fading voices follow');
+  for (const o of log.oscs) if (o.stopped.length) o.onended?.();
+  const frozen = new Map(log.oscs.filter((o) => o.stopped.length).map((o) => [o, o.detune.calls.length]));
+  m.setParam('detune', 5);
+  // ended voices are forgotten: nothing was sent to oscillators that stopped and ended
+  for (const [o, n] of frozen) assert.equal(o.detune.calls.length, n, 'an ended voice was touched');
+});
+
+test('drone osc 2: wave2 swaps the voices while mix > 0 and is only stored at mix 0', () => {
+  const a = setup({ mix: 0.5 });
+  a.step(1);
+  const before = a.log.oscs.length;
+  a.m.setParam('wave2', 'square');
+  assert.equal(a.log.oscs.length - before, 2, 'a new voice with both oscillators');
+  assert.equal(a.log.oscs[0].stopped.length, 1);
+  assert.equal(a.log.oscs[1].stopped.length, 1);
+  assert.equal(a.log.oscs.at(-1).type, 'square');
+  const b = setup();
+  b.step(1);
+  b.m.setParam('wave2', 'square');
+  assert.equal(b.log.oscs.length, 1);
+  assert.equal(b.log.oscs[0].stopped.length, 0);
+  b.m.setParam('mix', 0.5);
+  assert.equal(b.log.oscs[1].type, 'square', 'the stored wave 2 is used when the second oscillator appears');
+});
+
+test('drone osc 2: after the shutdown killed the voices mix moves nothing, and a restart starts from a clean list', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { m, log, step } = setup({ fade: 4 });
+    step(1);
+    m.setParam('mix', 0.5);
+    assert.equal(log.oscs.length, 2);
+    m.stop();
+    mock.timers.tick(8500); // the shutdown timer kills the voices
+    for (const o of log.oscs) o.onended?.();
+    const before = log.oscs.length;
+    m.setParam('mix', 0.8);
+    m.setParam('detune', 30);
+    assert.equal(log.oscs.length, before, 'no oscillator for a voice that is gone');
+    const killedB = log.oscs[1];
+    const killedDetune = killedB.detune.calls.length;
+    m.start();
+    step(0.1);
+    assert.equal(log.oscs.length, before + 2, 'the new root voice starts with both oscillators (mix is 0.8)');
+    m.setParam('detune', 31);
+    assert.equal(killedB.detune.calls.length, killedDetune, 'the killed voice is forgotten');
+    assert.equal(lastDetune(log.oscs.at(-1)), 31);
+  } finally {
+    mock.timers.reset();
+  }
 });

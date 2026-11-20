@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyScene, validateScene } from '../js/scene.js';
+import { applyScene, validateScene, serializeScene } from '../js/scene.js';
+import { createMelodicModule, createDroneModule } from '../js/module.js';
 
 function fakeEngine({ stopped = false, failAddModule = [], failSetVolume = [], failAddEffect = [] } = {}) {
   const log = [];
@@ -158,4 +159,24 @@ test('applyScene skips a bitcrusher the engine cannot build and still builds the
   assert.deepEqual(skipped, ['effect 2 (bitcrusher)']);
   assert.deepEqual(e.effects.map((f) => f.type), ['delay']);
   assert.equal(e.modules.length, 1);
+});
+
+test('applyScene sets wave 2, mix and detune on the modules it builds', () => {
+  const e = fakeEngine();
+  applyScene(e, scene([mod('melodic', { params: { mix: 0.4, wave2: 'square', detune: -12 } }), mod('drone', { params: { mix: 1, wave2: 'triangle', detune: 50 } }), mod('rhythmic')]), fakeUi(e));
+  const [melodic, drone, rhythmic] = e.modules;
+  assert.deepEqual([melodic.params.mix, melodic.params.wave2, melodic.params.detune], [0.4, 'square', -12]);
+  assert.deepEqual([drone.params.mix, drone.params.wave2, drone.params.detune], [1, 'triangle', 50]);
+  assert.ok(!('mix' in rhythmic.params));
+});
+
+test('a serialized melodic and drone module round-trips its osc 2 settings through validation', () => {
+  const m = createMelodicModule();
+  m.setParam('mix', 0.35); m.setParam('wave2', 'triangle'); m.setParam('detune', 9);
+  const d = createDroneModule();
+  d.setParam('mix', 0.6); d.setParam('wave2', 'square'); d.setParam('detune', -20);
+  for (const x of [m, d]) { x.sends = [0, 1, 2].map(() => ({ fx: null, level: 0.3 })); x.volume = 1; x.pan = 0; }
+  const back = validateScene(JSON.parse(JSON.stringify(serializeScene({ modules: [m, d], effects: [] })))).scene;
+  assert.deepEqual([back.modules[0].params.mix, back.modules[0].params.wave2, back.modules[0].params.detune], [0.35, 'triangle', 9]);
+  assert.deepEqual([back.modules[1].params.mix, back.modules[1].params.wave2, back.modules[1].params.detune], [0.6, 'square', -20]);
 });

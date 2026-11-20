@@ -170,13 +170,12 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix
     setPeak(p) {
       gain.gain.setTargetAtTime(p, ctx.currentTime, fade / 4);
     },
-    /** Moves the balance and detune of a sounding voice; a voice built without a second oscillator gets one. */
+    /** Moves the balance and detune of a voice (also one that is fading out); a sounding voice built without a second oscillator gets one. */
     setMix({ mix: m, detune: dt, wave2: w2 }) {
-      if (released) return;
       const now = ctx.currentTime;
       const { a, b } = oscMix(m);
       if (!oscB) {
-        if (b <= 0) return;
+        if (released || b <= 0) return; // a fading voice never gets a new oscillator
         addSecond(now, w2, dt);
       }
       gainA.gain.setTargetAtTime(a, now, MIX_RAMP);

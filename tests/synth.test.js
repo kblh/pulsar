@@ -167,3 +167,23 @@ test('release and kill on a voice that got its second oscillator later free that
   for (const o of oscs) { assert.equal(o.stops.length, 1); o.onended(); }
   for (const n of ctx.nodes) assert.ok(n.disconnected >= 1, `${n.kind} left connected`);
 });
+
+test('a fading-out voice that already has its second oscillator still follows setMix, but never gets a new one', () => {
+  const ctx = stubCtx();
+  const voice = createDroneVoice(ctx, {}, { freq: 110, wave: 'sine', peak: 0.5, fade: 4, wave2: 'square', mix: 0.5 });
+  voice.release(3);
+  voice.setMix({ mix: 0.2, detune: -7, wave2: 'square' });
+  const [, b] = kinds(ctx, 'osc');
+  const [, gA, gB] = kinds(ctx, 'gain');
+  assert.deepEqual(lastTarget(gA.gain).slice(0, 2), ['target', 0.8]);
+  assert.deepEqual(lastTarget(gB.gain).slice(0, 2), ['target', 0.2]);
+  assert.deepEqual(lastTarget(b.detune).slice(0, 2), ['target', -7]);
+  const plain = createDroneVoice(stubCtx(), {}, { freq: 110, wave: 'sine', peak: 0.5, fade: 4 });
+  plain.release(3);
+  plain.setMix({ mix: 1, detune: 0, wave2: 'square' });
+  const ctx2 = stubCtx();
+  const v2 = createDroneVoice(ctx2, {}, { freq: 110, wave: 'sine', peak: 0.5, fade: 4 });
+  v2.release(3);
+  v2.setMix({ mix: 1, detune: 0, wave2: 'square' });
+  assert.equal(kinds(ctx2, 'osc').length, 1, 'no oscillator is added to a voice that is already fading out');
+});

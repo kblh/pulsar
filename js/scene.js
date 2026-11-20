@@ -70,6 +70,10 @@ function cleanModuleParams(type, p) {
   if (type !== 'rhythmic') {
     const pc = cleanPitchConfig(p.pitchConfig);
     if (pc) out.pitchConfig = pc;
+    // The second oscillator; a scene without these keys keeps the module's defaults (mix 0 = one oscillator).
+    if (WAVES.includes(p.wave2)) out.wave2 = p.wave2;
+    if (isNum(p.mix)) out.mix = clamp(p.mix, 0, 1);
+    if (isNum(p.detune)) out.detune = clamp(Math.round(p.detune), -50, 50);
   }
   if (type === 'melodic') {
     if (typeof p.rhythm === 'string') out.rhythm = p.rhythm.slice(0, MAX_PATTERN);

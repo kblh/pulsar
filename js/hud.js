@@ -101,6 +101,12 @@ export function valueChars(format, { min, max, step }) {
   return w;
 }
 
+/** Detune in cents as a signed whole number: '+12 ct', '\u22127 ct', '0 ct'. */
+export function formatCents(v) {
+  const n = Math.round(num(v) ?? 0);
+  return n === 0 ? '0 ct' : `${n > 0 ? '+' : '\u2212'}${Math.abs(n)} ct`;
+}
+
 // ---- drone root note <-> picker ----
 /** `{ root, octave }` for a note name; enharmonic spellings come back as the ROOTS name. */
 export function splitRoot(rootNote) {
