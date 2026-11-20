@@ -5,7 +5,15 @@ export function stubCtx() {
   const time = { t: 1 };
   const param = () => {
     const calls = [];
-    return { calls, setTargetAtTime: (...a) => calls.push(['target', ...a]), set value(v) { calls.push(['value', v]); } };
+    return {
+      calls,
+      setTargetAtTime: (...a) => calls.push(['target', ...a]),
+      setValueAtTime: (...a) => calls.push(['setValue', ...a]),
+      linearRampToValueAtTime: (...a) => calls.push(['linear', ...a]),
+      exponentialRampToValueAtTime: (...a) => calls.push(['exp', ...a]),
+      cancelScheduledValues: (...a) => calls.push(['cancel', ...a]),
+      set value(v) { calls.push(['value', v]); },
+    };
   };
   const mk = (kind, extra = {}) => {
     const node = { kind, connections: [], disconnected: 0, ...extra,
@@ -17,6 +25,11 @@ export function stubCtx() {
     nodes, buffers, sampleRate: 8000,
     get currentTime() { return time.t; },
     createGain: () => mk('gain', { gain: param() }),
+    createOscillator: () => mk('osc', {
+      type: 'sine', frequency: param(), detune: param(), starts: [], stops: [], onended: null,
+      start(t) { this.starts.push(t); },
+      stop(t) { this.stops.push(t); },
+    }),
     createStereoPanner: () => mk('pan', { pan: param() }),
     createDelay: (max) => mk('delay', { maxDelayTime: max, delayTime: param() }),
     createBiquadFilter: () => mk('biquad', { frequency: param(), Q: param(), gain: param() }),

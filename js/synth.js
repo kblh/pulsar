@@ -13,11 +13,26 @@ function noiseBuffer(ctx) {
   return buf;
 }
 
+const MIX_RAMP = 0.05; // seconds: moving mix or detune on a sounding voice never jumps
+
+const finite = (v) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(Number(v));
+
+/** The levels of oscillator A and B for a mix of 0..1: a linear crossfade that adds up to 1. */
+export function oscMix(mix) {
+  const m = finite(mix) ? Math.min(1, Math.max(0, Number(mix))) : 0;
+  return { a: 1 - m, b: m };
+}
+
+/** Detune of the second oscillator in cents, a whole number within +-50; unusable input means none. */
+function detuneOf(detune) {
+  return finite(detune) ? Math.min(50, Math.max(-50, Math.round(Number(detune)))) : 0;
+}
+
 function disconnectOnEnd(source, ...nodes) {
   source.onended = () => nodes.forEach((n) => n.disconnect());
 }
 
-export function playNote(ctx, dest, { freq, time, duration, wave, env = DEFAULT_ENV }) {
+export function playNote(ctx, dest, { freq, time, duration, wave, env = DEFAULT_ENV, wave2, mix = 0, detune = 0 }) {
   const { a, d, s, r } = env;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -29,10 +44,32 @@ export function playNote(ctx, dest, { freq, time, duration, wave, env = DEFAULT_
   gain.gain.linearRampToValueAtTime(Math.max(0.0001, 0.6 * s), time + a + d);
   gain.gain.setValueAtTime(Math.max(0.0001, 0.6 * s), end);
   gain.gain.linearRampToValueAtTime(0.0001, end + r);
-  osc.connect(gain).connect(dest);
-  osc.start(time);
-  osc.stop(end + r + 0.02);
-  disconnectOnEnd(osc, osc, gain);
+  const { a: levelA, b: levelB } = oscMix(mix);
+  if (levelB <= 0) {
+    osc.connect(gain).connect(dest);
+    osc.start(time);
+    osc.stop(end + r + 0.02);
+    disconnectOnEnd(osc, osc, gain);
+    return;
+  }
+  // A second oscillator: each one through its own level into the shared envelope.
+  const oscB = ctx.createOscillator();
+  oscB.type = typeof wave2 === 'string' ? wave2 : wave;
+  oscB.frequency.value = freq;
+  oscB.detune.value = detuneOf(detune);
+  const gainA = ctx.createGain();
+  gainA.gain.value = levelA;
+  const gainB = ctx.createGain();
+  gainB.gain.value = levelB;
+  osc.connect(gainA).connect(gain);
+  oscB.connect(gainB).connect(gain);
+  gain.connect(dest);
+  for (const o of [osc, oscB]) {
+    o.start(time);
+    o.stop(end + r + 0.02);
+  }
+  disconnectOnEnd(osc, osc, gainA, gain);
+  disconnectOnEnd(oscB, oscB, gainB);
 }
 
 export function playDrum(ctx, dest, { kind, time }) {
@@ -87,30 +124,75 @@ export function playDrum(ctx, dest, { kind, time }) {
  * A sustained oscillator whose level only ever changes by exponential ramps
  * (setTargetAtTime) — never a jump. Starts silent and fades in.
  */
-export function createDroneVoice(ctx, dest, { freq, wave, peak, fade }) {
+export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix = 0, detune = 0 }) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.type = wave;
   osc.frequency.value = freq;
   gain.gain.value = 0;
+  let gainA = null; // A's level stage, inserted once a second oscillator exists
+  let oscB = null;
+  let gainB = null;
+  let released = false;
+
+  function addSecond(start, w2, dt, levelA = 1, levelB = 0) {
+    gainA = ctx.createGain();
+    gainA.gain.value = levelA; // for a voice that already sounds this is A's old level (1), so inserting the stage is inaudible
+    osc.disconnect();
+    osc.connect(gainA).connect(gain);
+    oscB = ctx.createOscillator();
+    oscB.type = typeof w2 === 'string' ? w2 : wave;
+    oscB.frequency.value = freq;
+    oscB.detune.value = detuneOf(dt);
+    gainB = ctx.createGain();
+    gainB.gain.value = levelB; // for a voice that already sounds B fades in from silence (0)
+    oscB.connect(gainB).connect(gain);
+    oscB.start(start);
+  }
+
   osc.connect(gain).connect(dest);
   const t = ctx.currentTime;
   gain.gain.setTargetAtTime(peak, t, fade / 4);
   osc.start(t);
-  let released = false;
+  const start = oscMix(mix);
+  if (start.b > 0) addSecond(t, wave2, detune, start.a, start.b);
+
+  const freeA = () => {
+    osc.disconnect();
+    gain.disconnect();
+    gainA?.disconnect();
+  };
+  const freeB = () => {
+    oscB?.disconnect();
+    gainB?.disconnect();
+  };
   return {
     setPeak(p) {
       gain.gain.setTargetAtTime(p, ctx.currentTime, fade / 4);
+    },
+    /** Moves the balance and detune of a sounding voice; a voice built without a second oscillator gets one. */
+    setMix({ mix: m, detune: dt, wave2: w2 }) {
+      if (released) return;
+      const now = ctx.currentTime;
+      const { a, b } = oscMix(m);
+      if (!oscB) {
+        if (b <= 0) return;
+        addSecond(now, w2, dt);
+      }
+      gainA.gain.setTargetAtTime(a, now, MIX_RAMP);
+      gainB.gain.setTargetAtTime(b, now, MIX_RAMP);
+      oscB.detune.setTargetAtTime(detuneOf(dt), now, MIX_RAMP);
     },
     /** Stops immediately; only for voices that are already silent. */
     kill() {
       if (released) return;
       released = true;
-      osc.onended = () => {
-        osc.disconnect();
-        gain.disconnect();
-      };
+      osc.onended = freeA;
       osc.stop(ctx.currentTime);
+      if (oscB) {
+        oscB.onended = freeB;
+        oscB.stop(ctx.currentTime);
+      }
     },
     release(f, onDone) {
       if (released) return;
@@ -118,11 +200,14 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade }) {
       const now = ctx.currentTime;
       gain.gain.setTargetAtTime(0, now, f / 4);
       osc.onended = () => {
-        osc.disconnect();
-        gain.disconnect();
+        freeA();
         onDone?.();
       };
       osc.stop(now + f * 2);
+      if (oscB) {
+        oscB.onended = freeB;
+        oscB.stop(now + f * 2);
+      }
     },
   };
 }
