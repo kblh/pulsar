@@ -6,10 +6,14 @@ Generativní hudební sekvencer v prohlížeči (Web Audio API) s vzhledem termi
 
 ## Co umí
 
-- **Moduly** přidáváš tlačítkem `[+]`: melodic, rhythmic a drone. Každý má vlastní tempo a hodiny a sám se vyvíjí.
-- **Mix:** hlasitost a pan pro každý modul, globální `[stop all]` / `[play all]`.
-- **Efekty:** reverb a delay jako instance, každý modul má až 3 sendy.
-- **Scény:** `[save]` / `[load]` uloží nastavení do prohlížeče (localStorage). Scény jdou přejmenovat, smazat a exportovat nebo importovat jako JSON soubor.
+- **Moduly** přidáváš tlačítkem `[+]`: melodic, rhythmic a drone. Každý má vlastní tempo a hodiny a sám se vyvíjí. Melodic a drone mají **dva oscilátory** (vlna, poměr `mix` a rozladění `detune`).
+- **Karty:** efekty nahoře, moduly pod nimi, sekvence dole. Všechno je sbalené (jméno, play/stop a hlasitost, u efektu bypass); klik otevře detail na celou obrazovku, zavře ho Esc, tlačítko nebo Zpět.
+- **Ovládání:** HUD slidery (s tlačítky −/+ pro přesné hodnoty), přepínače a ADSR obálka s tažením uzlů; vše jde ovládat dotykem i klávesnicí od šířky 320 px. Textová pole jsou jen pro `notes` a `rhythm`.
+- **Mix:** hlasitost a pan pro každý modul, globální `play all` / `stop all`.
+- **Efekty** (instance přes `[+]`, až 3 sendy na modul, každý jde obejít): reverb (`width`), delay (`pingpong`), třípásmový equalizer a bitcrusher (potřebuje `AudioWorklet`, jinak se nenabídne). EQ je send, upraví jen přimíchanou kopii.
+- **Sekvence:** řada částí, v každé zní vybrané moduly po zadanou dobu (1–600 s), volitelně dokola. Částí se dá poskládat skladba, i tak, že tlačítkem „use running“ zapíšeš moduly, které právě hrají.
+- **Scény:** `[save]` / `[load]` uloží nastavení (včetně sekvence) do prohlížeče (localStorage); scény jdou přejmenovat, smazat a exportovat nebo importovat jako JSON.
+- **Moduly do souboru:** `[export]` v detailu modulu stáhne `<jméno>.pulsar-module.json`, `[import module]` v menu `[+]` je přidá zpět (sendy se neukládají).
 - **PWA:** jde nainstalovat a funguje offline.
 
 Zvuk se spustí až po prvním kliknutí, to vyžaduje prohlížeč.
@@ -29,11 +33,19 @@ python3 -m http.server 8000
 npm test
 ```
 
-Používá vestavěný `node --test`, žádné závislosti.
+Používá vestavěný `node --test`, žádné závislosti. Testy pokrývají čistou logiku (hudba, scény, soubory, sekvence, ovladače a geometrii obálky, zapojení efektů na nahrávacím stubu). UI a skutečný zvuk se ověřují v prohlížeči.
+
+## Struktura
+
+- `js/` — aplikace (ES moduly bez build kroku): `engine.js` (zvuk, transport, hodiny), `module.js` a `synth.js` (moduly a hlasy), `fx.js` (registr efektů), `sequence.js` (sekvence), `scene*.js` a `module-file.js` (scény a soubory), `ui.js`, `card.js`, `controls.js`, `envelope.js`, `sequence-ui.js` (rozhraní).
+- `docs/superpowers/` — návrhy (`specs/`) a plány (`plans/`) jednotlivých kroků.
+- `tests/` — Node testy.
 
 ## Nasazení (GitHub Pages)
 
-Web se servíruje přímo z kořene větve `main` (*Settings → Pages → Deploy from a branch*). Soubor `.nojekyll` vypíná zpracování Jekyllem. Při změně souborů aplikace zvyš `CACHE` v `sw.js` a nové soubory přidej do jeho seznamu `FILES`, jinak stávající návštěvníci uvidí starou verzi.
+Web se servíruje přímo z kořene větve `main` (*Settings → Pages → Deploy from a branch*). Soubor `.nojekyll` vypíná zpracování Jekyllem. Při změně souborů aplikace zvyš `CACHE` v `sw.js` a nové soubory přidej do jeho seznamu `FILES` (musí odpovídat obsahu `js/`, včetně `bitcrusher.worklet.js`), jinak stávající návštěvníci uvidí starou verzi; po vydání je potřeba stránku obnovit dvakrát.
+
+Při vývoji se service worker a HTTP cache chovají jako cache-first: po změně souborů smaž v prohlížeči service worker i cache (nebo použij čistý původ, např. `127.0.0.1` místo `localhost`), jinak uvidíš starý kód.
 
 ## Licence
 
