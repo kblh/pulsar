@@ -87,3 +87,43 @@ test('modules use independent clocks', () => {
   run(b, ctx, 30);
   assert.notEqual(a.bars, b.bars);
 });
+
+test('setParam env merges a partial envelope into the current one', () => {
+  const m = createMelodicModule({});
+  m.setParam('env', { a: 0.5 });
+  assert.deepEqual(m.params.env, { a: 0.5, d: 0.1, s: 0.5, r: 0.15 });
+  m.setParam('env', { d: 1 });
+  assert.deepEqual(m.params.env, { a: 0.5, d: 1, s: 0.5, r: 0.15 });
+});
+
+test('setParam env clamps times to 0-5 and sustain to 0-1, keeps in-range values', () => {
+  const m = createMelodicModule({});
+  m.setParam('env', { a: 9, d: -1, s: 3, r: 5 });
+  assert.deepEqual(m.params.env, { a: 5, d: 0, s: 1, r: 5 });
+  m.setParam('env', { s: 0.25 });
+  assert.equal(m.params.env.s, 0.25);
+});
+
+test('setParam env ignores unusable values per key and non-objects altogether', () => {
+  const m = createMelodicModule({});
+  const before = { ...m.params.env };
+  m.setParam('env', { a: 'x', d: NaN, s: null, r: Infinity });
+  assert.deepEqual(m.params.env, before);
+  m.setParam('env', { a: true });
+  assert.deepEqual(m.params.env, before);
+  for (const bad of [null, undefined, [], 5, 'a']) {
+    m.setParam('env', bad);
+    assert.deepEqual(m.params.env, before, String(bad));
+  }
+  m.setParam('env', { a: 0.2, d: 'x' });
+  assert.deepEqual(m.params.env, { ...before, a: 0.2 });
+});
+
+test('setParam env replaces the env object instead of mutating the old one', () => {
+  const m = createMelodicModule({});
+  const old = m.params.env;
+  const snapshot = { ...old };
+  m.setParam('env', { a: 1 });
+  assert.notEqual(m.params.env, old);
+  assert.deepEqual(old, snapshot);
+});

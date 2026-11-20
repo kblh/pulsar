@@ -33,6 +33,16 @@ function applyParam(m, key, value) {
   } else if (key === 'rhythm') {
     m.params.rhythm = value;
     m.state.rhythm = evolved(parsePattern(value));
+  } else if (key === 'env') {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return;
+    const env = { ...m.params.env };
+    for (const k of ['a', 'd', 's', 'r']) {
+      const v = value[k];
+      if (typeof v !== 'number' && !(typeof v === 'string' && v.trim() !== '')) continue;
+      const n = Number(v);
+      if (Number.isFinite(n)) env[k] = clamp(n, 0, k === 's' ? 1 : 5);
+    }
+    m.params.env = env;
   } else if (key === 'pitchConfig') {
     m.params.pitchConfig = value;
     m.pool = buildPitchPool(value);
