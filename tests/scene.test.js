@@ -331,3 +331,17 @@ test('the sequence round-trips through serialisation and validation', () => {
   const back = validateScene(JSON.parse(JSON.stringify(serializeScene({ modules, effects, sequence: seq })))).scene;
   assert.deepEqual(back.sequence, { name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [0, 2] }, { name: 'b', duration: 40, modules: [1] }] });
 });
+
+test('the global tempo is saved only when given', () => {
+  assert.deepEqual(serializeScene({ modules: [], effects: [], tempo: { on: true, bpm: 140 } }).tempo, { on: true, bpm: 140 });
+  assert.ok(!('tempo' in serializeScene({ modules: [], effects: [] })));
+});
+
+test('validateScene cleans the tempo and leaves it out when there is none', () => {
+  const v = (tempo) => validateScene({ version: 1, effects: [], modules: [mod()], ...(tempo === undefined ? {} : { tempo }) }).scene;
+  assert.deepEqual(v({ on: true, bpm: 5000 }).tempo, { on: true, bpm: 300 });
+  assert.deepEqual(v({ on: 'yes', bpm: 'x' }).tempo, { on: false, bpm: 120 });
+  assert.ok(!('tempo' in v('x')));
+  assert.ok(!('tempo' in v(null)));
+  assert.ok(!('tempo' in v()));
+});

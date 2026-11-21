@@ -32,6 +32,8 @@ function fakeEngine({ stopped = false, failAddModule = [], failSetVolume = [], f
     setSend(m, slot, patch) { Object.assign(m.sends[slot], patch); log.push('send'); },
     toggle(m) { m.running = !m.running; log.push(`toggle:${m.type}`); },
     setRunning(m, on) { if (m.running !== on) { m.running = on; log.push(`toggle:${m.type}`); } },
+    tempoCalls: [],
+    setTempo(t) { e.tempoCalls.push(t); },
     sequenceData: null,
     addSequence(data) {
       if (failAddSequence) throw new Error('boom');
@@ -254,4 +256,14 @@ test('addModuleFromData switches a module off with setRunning, so a module that 
   e.addModule = (m) => { m.sends = [0, 1, 2].map(() => ({ fx: null, level: 0.3 })); m.volume = 1; m.pan = 0; m.running = false; e.modules.push(m); }; // [stop all] stopped it on registration
   const m = addModuleFromData(e, cleanModule({ type: 'drone', running: false }));
   assert.equal(m.running, false);
+});
+
+test('applyScene sets the global tempo of the scene, or off/120 when it has none', () => {
+  const e = fakeEngine();
+  const withTempo = validateScene({ version: 1, effects: [], modules: [mod('drone')], tempo: { on: true, bpm: 150 } }).scene;
+  applyScene(e, withTempo, fakeUi(e));
+  assert.deepEqual(e.tempoCalls, [{ on: true, bpm: 150 }]);
+  const e2 = fakeEngine();
+  applyScene(e2, scene([mod('drone')]), fakeUi(e2));
+  assert.deepEqual(e2.tempoCalls, [{ on: false, bpm: 120 }]);
 });

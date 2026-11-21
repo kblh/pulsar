@@ -5,6 +5,7 @@ import { DEFAULT_ENV } from './synth.js';
 import { WAVES, ROOTS } from './options.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
 import { cleanDuration, MAX_PARTS } from './sequence.js';
+import { cleanTempo, DEFAULT_TEMPO } from './timing.js';
 
 export const NAME_MAX = 24;
 const MODULE_TYPES = ['melodic', 'rhythmic', 'drone'];
@@ -39,12 +40,13 @@ export function serializeModule(m, stoppedByTransport = () => false) {
 }
 
 /** Plain-data snapshot of what the user set up (not the evolved state). `stoppedByTransport(m)` marks modules only [stop all] stopped. */
-export function serializeScene({ modules, effects, stoppedByTransport = () => false, sequence = null }) {
+export function serializeScene({ modules, effects, stoppedByTransport = () => false, sequence = null, tempo = null }) {
   const index = new Map(effects.map((fx, i) => [fx.id, i]));
   const position = new Map(modules.map((m, i) => [m.id, i]));
   const seq = sequence?.toData();
   return {
     version: 1,
+    ...(tempo ? { tempo: cleanTempo(tempo) } : {}),
     effects: effects.map((fx) => ({ type: fx.type, name: fx.name ?? fx.type, enabled: fx.enabled !== false, params: clone(fx.params) })),
     modules: modules.map((m) => ({
       ...serializeModule(m, stoppedByTransport),
@@ -203,7 +205,8 @@ export function validateScene(data) {
 
   if (!effects.length && !modules.length) return { scene: null, problems: [...problems, 'scene is empty'] };
   const sequence = data.sequence === undefined ? null : cleanSequence(data.sequence, moduleRemap, problems);
-  return { scene: { version: 1, effects, modules, ...(sequence ? { sequence } : {}) }, problems };
+  const tempo = isObj(data.tempo) ? cleanTempo(data.tempo) : null; // older scenes have none
+  return { scene: { version: 1, effects, modules, ...(sequence ? { sequence } : {}), ...(tempo ? { tempo } : {}) }, problems };
 }
 
 const FACTORIES = { melodic: createMelodicModule, rhythmic: createRhythmicModule, drone: createDroneModule };
@@ -248,6 +251,7 @@ export function addModuleFromData(engine, e, { fxs = [] } = {}) {
 export function applyScene(engine, scene, ui) {
   const skipped = [];
   ui.clear();
+  engine.setTempo(scene.tempo ?? DEFAULT_TEMPO); // a scene without a tempo plays at the modules' own
   if (engine.isStopped()) engine.playAll(); // a leftover [stop all] would otherwise start the new modules stopped
 
   const fxs = scene.effects.map((e, i) => {

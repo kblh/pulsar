@@ -161,3 +161,14 @@ test('exportFilename takes a fallback for an empty name', () => {
   assert.equal(exportFilename('', '.x.json', 'module'), 'module.x.json');
   assert.equal(exportFilename('a/b', '.x.json', 'module'), 'a_b.x.json');
 });
+
+test('the tempo survives a scene file and is never part of a module file', async () => {
+  const modules = [Object.assign(createMelodicModule(), { sends: slots() })];
+  const scene = validateScene(serializeScene({ modules, effects: [], tempo: { on: true, bpm: 99 } })).scene;
+  const { text } = sceneToFile('t', scene);
+  const back = parseSceneFile(text, 't.json');
+  assert.deepEqual(back.entries[0].scene.tempo, { on: true, bpm: 99 });
+  const { moduleToFile } = await import('../js/module-file.js');
+  const { serializeModule } = await import('../js/scene.js');
+  assert.ok(!moduleToFile(serializeModule(modules[0])).includes('tempo'));
+});

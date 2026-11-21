@@ -51,7 +51,7 @@ export function mountScenes({ engine, store, sceneUi, panelEl, say, download = d
       say('nothing to save');
       return;
     }
-    const r = store.save(name, serializeScene({ modules: engine.modules, effects: engine.effects, stoppedByTransport: engine.stoppedByTransport, sequence: engine.sequence }));
+    const r = store.save(name, serializeScene({ modules: engine.modules, effects: engine.effects, stoppedByTransport: engine.stoppedByTransport, sequence: engine.sequence, tempo: engine.tempo }));
     if (!r.ok) {
       say(r.error);
       return;
@@ -82,7 +82,7 @@ export function mountScenes({ engine, store, sceneUi, panelEl, say, download = d
       say('nothing to export');
       return;
     }
-    const scene = serializeScene({ modules: engine.modules, effects: engine.effects, stoppedByTransport: engine.stoppedByTransport, sequence: engine.sequence });
+    const scene = serializeScene({ modules: engine.modules, effects: engine.effects, stoppedByTransport: engine.stoppedByTransport, sequence: engine.sequence, tempo: engine.tempo });
     const file = sceneToFile(name, scene);
     download(file.filename, file.text);
   }
