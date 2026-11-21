@@ -61,7 +61,7 @@ header.bar button { min-height: 44px; min-width: 44px; }
   flex: 1 1 8ch; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--accent); letter-spacing: 0.04em; overflow-wrap: anywhere;
 }
-.card-head .card-volume { flex: 0 0 90px; width: 90px; min-width: 0; }
+.card-head .card-volume { flex: 1 1 110px; max-width: 45%; min-width: 0; }
 .card-name { color: inherit; letter-spacing: inherit; text-align: left; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .card-body { padding-bottom: 12px; }
@@ -78,6 +78,7 @@ header.bar button { min-height: 44px; min-width: 44px; }
   position: sticky; top: 0; z-index: 1; flex-wrap: wrap; gap: 0 8px; margin: 0 calc(var(--pad) * -1) 8px;
   padding: 0 var(--pad); background: var(--bg); border-bottom: 1px solid var(--line);
 }
+.card.open .card-head .card-volume { flex: 1 1 100%; max-width: none; order: 10; }
 .card-head button { min-width: 44px; min-height: 44px; }
 .card-close { font-size: 22px; line-height: 1; }
 .fx-controls.bypassed { opacity: 0.45; }
@@ -85,6 +86,8 @@ body.detail-open { overflow: hidden; }
 body.detail-open header.bar, body.detail-open #scene-panel, body.detail-open .card:not(.open) { visibility: hidden; }
 
 /* controls */
+.hud-slider, .nudge, .hud-seg, .card, button, .check { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+input[type=text], textarea { user-select: text; -webkit-user-select: text; }
 button {
   font: inherit; color: var(--fg); background: none; border: 0; cursor: pointer; padding: 0;
   touch-action: manipulation; /* rapid taps on - / + must not zoom the page */
@@ -114,7 +117,7 @@ input[type=range] { flex: 1 1 8ch; accent-color: var(--accent); padding: 0; }
 .hud-slider { display: flex; align-items: center; gap: 8px; flex: 1 1 200px; min-width: 0; min-height: 44px; }
 .hud-track { position: relative; flex: 1; min-width: 0; height: 44px; display: flex; align-items: center; }
 .hud-bar {
-  position: relative; width: 100%; height: 14px; overflow: hidden;
+  position: relative; width: 100%; height: 20px; overflow: hidden;
   border: 1px solid var(--line); border-radius: 3px;
   background: repeating-linear-gradient(135deg, transparent 0 3px, rgba(94, 238, 255, 0.22) 3px 4px);
 }
@@ -122,17 +125,9 @@ input[type=range] { flex: 1 1 8ch; accent-color: var(--accent); padding: 0; }
   position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 0) * 1%);
   background: linear-gradient(90deg, rgba(94, 238, 255, 0.55), var(--accent)); box-shadow: 0 0 8px var(--glow);
 }
-.hud-input {
-  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0;
-  border: 0; background: none; cursor: pointer; touch-action: pan-y;
-  -webkit-appearance: none; appearance: none;
-}
-/* a hairline thumb: the browser maps the pointer to the value as (x - thumb/2) / (width - thumb), and a normal thumb skews the drawn bar */
-.hud-input::-webkit-slider-runnable-track { height: 44px; background: transparent; border: 0; }
-.hud-input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 1px; height: 44px; border: 0; background: transparent; }
-.hud-input::-moz-range-track { height: 44px; background: transparent; border: 0; }
-.hud-input::-moz-range-thumb { width: 1px; height: 44px; border: 0; background: transparent; }
-.hud-slider:has(.hud-input:focus-visible) .hud-bar { outline: 1px solid var(--accent); outline-offset: 2px; }
+.hud-track { cursor: pointer; touch-action: pan-y; }
+.hud-track:focus-visible { outline: none; }
+.hud-track:focus-visible .hud-bar { outline: 1px solid var(--accent); outline-offset: 2px; }
 .hud-value { flex: none; min-width: 4ch; text-align: right; color: var(--fg); }
 .nudge { flex: none; min-width: 44px; min-height: 44px; font-size: 18px; color: var(--accent); }
 .hud-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }

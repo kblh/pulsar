@@ -47,7 +47,7 @@ export function createCard({ kind, title, nameEditor, lead = [], quick = [], act
   name.addEventListener('click', () => detail.open(card));
   node.addEventListener('click', (e) => {
     if (node.classList.contains('open')) return;
-    if (e.target.closest('button, input, select, label, a')) return;
+    if (e.target.closest('button, input, select, label, a, [role=slider]')) return;
     detail.open(card);
   });
   closeBtn.addEventListener('click', () => detail.close());

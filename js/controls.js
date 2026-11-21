@@ -1,4 +1,4 @@
-import { snap, toFraction, fromFraction, valueChars } from './hud.js';
+import { snap, toFraction, fromFraction, valueChars, fractionFromX, keyValue, createGesture } from './hud.js';
 
 function el(tag, props = {}, ...children) {
   const e = Object.assign(document.createElement(tag), props);
@@ -6,35 +6,31 @@ function el(tag, props = {}, ...children) {
   return e;
 }
 
-const LOG_POSITIONS = 200; // a log slider moves in this many equal steps, so one key press is one step on the bar
-
 /**
- * A HUD bar with a transparent native range input on top: the browser handles dragging, keys and
- * accessibility, the drawn bar is only the look. `set` shows a value without calling `onInput`.
+ * A HUD bar driven by Pointer Events: the mouse sets the value on press and follows the drag, a finger sets it on a tap
+ * or once it drags sideways (a vertical swipe scrolls the page and changes nothing). The track is a `role="slider"` div,
+ * so keys and screen readers work. `set` shows a value without calling `onInput`.
  * `nudge` is a step size for the − / + buttons, or false for none.
  */
 export function createSlider({ min, max, step, value, scale = 'linear', format, onInput, ariaLabel, nudge = false }) {
   const opts = { min, max, step, scale };
-  const log = scale === 'log';
   let cur = snap(value, opts);
 
   const fill = el('div', { className: 'hud-fill' });
   const bar = el('div', { className: 'hud-bar' }, fill);
-  const input = el('input', { type: 'range', className: 'hud-input' });
-  if (log) Object.assign(input, { min: 0, max: LOG_POSITIONS, step: 1 });
-  else Object.assign(input, { min, max, step });
-  if (ariaLabel) input.setAttribute('aria-label', ariaLabel);
+  const track = el('div', { className: 'hud-track', tabIndex: 0 }, bar);
+  track.setAttribute('role', 'slider');
+  track.setAttribute('aria-valuemin', String(min));
+  track.setAttribute('aria-valuemax', String(max));
+  if (ariaLabel) track.setAttribute('aria-label', ariaLabel);
   const valueEl = format ? el('span', { className: 'hud-value' }) : null;
   if (valueEl) valueEl.style.width = `${valueChars(format, opts)}ch`; // a fixed width: the bar must not move while dragging
 
   function render() {
     fill.style.setProperty('--p', String(toFraction(cur, opts) * 100));
-    input.value = String(log ? Math.round(toFraction(cur, opts) * LOG_POSITIONS) : cur);
-    if (format) {
-      const text = format(cur);
-      valueEl.textContent = text;
-      input.setAttribute('aria-valuetext', text);
-    }
+    track.setAttribute('aria-valuenow', String(cur));
+    track.setAttribute('aria-valuetext', format ? format(cur) : String(cur));
+    if (format) valueEl.textContent = format(cur);
   }
 
   function change(next) {
@@ -44,26 +40,40 @@ export function createSlider({ min, max, step, value, scale = 'linear', format, 
     onInput?.(cur);
   }
 
-  input.addEventListener('input', () => {
-    change(log ? fromFraction(Number(input.value) / LOG_POSITIONS, opts) : snap(input.value, opts));
-  });
+  const apply = (x) => change(fromFraction(fractionFromX(x, track.getBoundingClientRect()), opts));
 
-  if (log) {
-    // The input moves in index space but values snap to `step`, so near the low end many indexes are the
-    // same value and a key would look dead. Keys therefore move the value: 5 % of it, never less than `step`.
-    const KEYS = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 10, PageDown: -10 };
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Home' || e.key === 'End') {
-        e.preventDefault();
-        change(e.key === 'Home' ? min : max);
-      } else if (e.key in KEYS) {
-        e.preventDefault();
-        const dir = Math.sign(KEYS[e.key]);
-        const size = Math.max(step, cur * 0.05) * Math.abs(KEYS[e.key]);
-        change(snap(cur + dir * size, opts));
-      }
-    });
-  }
+  let gesture = null;
+  let pointerId = null;
+  track.addEventListener('pointerdown', (e) => {
+    if (gesture?.active) return; // a second finger while one is dragging
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    pointerId = e.pointerId;
+    gesture = createGesture({ pointerType: e.pointerType });
+    try { track.setPointerCapture(e.pointerId); } catch { /* not an active pointer (synthetic event) */ }
+    if (e.pointerType !== 'touch') {
+      e.preventDefault();
+      track.focus();
+    }
+    if (gesture.down(e.clientX)) apply(e.clientX);
+  });
+  track.addEventListener('pointermove', (e) => {
+    if (gesture && e.pointerId === pointerId && gesture.move(e.clientX)) apply(e.clientX);
+  });
+  track.addEventListener('pointerup', (e) => {
+    if (gesture && e.pointerId === pointerId && gesture.up(e.clientX)) apply(e.clientX);
+  });
+  const cancel = (e) => {
+    if (gesture && e.pointerId === pointerId) gesture.cancel();
+  };
+  track.addEventListener('pointercancel', cancel);
+  track.addEventListener('lostpointercapture', cancel);
+
+  track.addEventListener('keydown', (e) => {
+    const v = keyValue(e.key, cur, opts);
+    if (v === null) return;
+    e.preventDefault();
+    change(v);
+  });
 
   const mkNudge = (dir) => {
     const b = el('button', { type: 'button', className: 'nudge', textContent: dir < 0 ? '−' : '+' });
@@ -74,7 +84,7 @@ export function createSlider({ min, max, step, value, scale = 'linear', format, 
 
   const node = el('div', { className: 'hud-slider' },
     ...(nudge ? [mkNudge(-1)] : []),
-    el('div', { className: 'hud-track' }, bar, input),
+    track,
     ...(valueEl ? [valueEl] : []),
     ...(nudge ? [mkNudge(1)] : []));
 
