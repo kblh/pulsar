@@ -4,6 +4,7 @@ import { connectMix, clampVolume, clampPan } from './mix.js';
 import { createRouting } from './sends.js';
 import { loadWorklet, hasWorklet } from './worklet.js';
 import { createSequence } from './sequence.js';
+import { createTempo } from './timing.js';
 
 export function createEngine() {
   const ctx = new AudioContext();
@@ -12,12 +13,13 @@ export function createEngine() {
   master.gain.value = 0.8;
   master.connect(ctx.destination);
   const modules = [];
+  const tempo = createTempo();
   const transport = createTransport();
   const mixes = new Map();
   const routing = createRouting(ctx, master);
   let sequence = null; // the song structure, at most one
   const clock = createClock(() => {
-    for (const m of modules) m.tick(ctx, m.out, ctx.currentTime);
+    for (const m of modules) m.tick(ctx, m.out, ctx.currentTime, tempo.state);
     sequence?.tick(ctx.currentTime);
   });
   // The clock runs while there is anything to tick: a module or the sequence.
@@ -49,6 +51,9 @@ export function createEngine() {
     ready,
     hasWorklet: () => hasWorklet(ctx),
     get sequence() { return sequence; },
+    /** The global tempo ({ on, bpm }); modules play at it while `on`. */
+    tempo: tempo.state,
+    setTempo: (partial) => tempo.set(partial),
     setRunning,
     addSequence(data) {
       if (sequence) throw new Error('there is already a sequence');

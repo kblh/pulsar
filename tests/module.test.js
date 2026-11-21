@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMelodicModule, createRhythmicModule } from '../js/module.js';
+import { stubCtx as recordingCtx } from './helpers/stub-ctx.js';
 
 function stubCtx() {
   const created = [];
@@ -173,4 +174,33 @@ test('the rhythmic module has no osc 2 parameters and ignores them', () => {
   m.setParam('mix', 0.5);
   m.setParam('wave2', 'square');
   assert.ok(!('mix' in m.params) && !('wave2' in m.params));
+});
+
+function noteTimes(tempo, own = 60) {
+  const ctx = recordingCtx();
+  const m = createMelodicModule({ bpm: own, rhythm: 'xxxxxxxxxxxxxxxx', swing: 0, randomize: 1, rhythmMod: 1 });
+  const dest = { disconnect() {} };
+  for (let t = 0; t < 2; t += 0.025) m.tick(ctx, dest, t, tempo);
+  const osc = ctx.nodes.filter((n) => n.kind === 'osc');
+  return { m, starts: osc.flatMap((n) => n.starts).sort((a, b) => a - b), osc };
+}
+
+test('with the global tempo on, steps follow it instead of the module bpm', () => {
+  const on = noteTimes({ on: true, bpm: 240 });
+  for (let i = 1; i < 8; i++) assert.ok(Math.abs(on.starts[i] - on.starts[i - 1] - 60 / 240 / 4) < 1e-6);
+  const off = noteTimes(undefined);
+  for (let i = 1; i < 8; i++) assert.ok(Math.abs(off.starts[i] - off.starts[i - 1] - 60 / 60 / 4) < 1e-6);
+});
+
+test('the module remembers the tempo it last played at and keeps its own bpm param', () => {
+  assert.equal(noteTimes({ on: true, bpm: 240 }).m.bpm, 240);
+  const own = noteTimes(undefined);
+  assert.equal(own.m.bpm, 60);
+  const on = noteTimes({ on: true, bpm: 240 });
+  assert.equal(on.m.params.bpm, 60);
+});
+
+test('note length follows the effective tempo too', () => {
+  const len = (r) => r.osc[0].stops[0] - r.osc[0].starts[0];
+  assert.ok(len(noteTimes({ on: true, bpm: 240 })) < len(noteTimes(undefined)));
 });

@@ -1,7 +1,7 @@
 import { buildPitchPool, midiToFreq, parseNote } from './scales.js';
 import { pickChange, nextChangeDelay, clampFade } from './drone.js';
 import { createTrack, advance } from './track.js';
-import { stepDuration } from './timing.js';
+import { stepDuration, effectiveBpm } from './timing.js';
 import { mutationEvery } from './evolution.js';
 import { mutateMelody, randomMelody } from './melody.js';
 import { mutateRhythm, parsePattern, RHYTHM_PRESETS } from './rhythm.js';
@@ -91,6 +91,7 @@ function makeModule(type, params, state, pool, onStep) {
     disposed: false,
     playhead: -1,
     bars: 0,
+    bpm: params.bpm, // the tempo of the latest tick: the global one while it is on, else params.bpm
     setParam: (key, value) => applyParam(m, key, value),
     start() {
       m.running = true;
@@ -105,10 +106,11 @@ function makeModule(type, params, state, pool, onStep) {
       m.running = false;
       if (m.out) m.out.disconnect();
     },
-    tick(ctx, dest, now) {
+    tick(ctx, dest, now, tempo) {
       if (m.disposed || !m.running) return;
       if (!m.track) m.track = createTrack(now);
-      for (const { time, stepIndex } of advance(m.track, now, m.params.bpm, m.params.swing)) {
+      m.bpm = effectiveBpm(m.params.bpm, tempo);
+      for (const { time, stepIndex } of advance(m.track, now, m.bpm, m.params.swing)) {
         if (stepIndex === 0) {
           m.bars++;
           m.mutateBar();
@@ -146,7 +148,7 @@ export function createMelodicModule(overrides = {}) {
     playNote(ctx, dest, {
       freq: midiToFreq(mod.pool[idx]),
       time,
-      duration: stepDuration(mod.params.bpm) * 0.9,
+      duration: stepDuration(mod.bpm) * 0.9,
       wave: mod.params.wave,
       wave2: mod.params.wave2,
       mix: mod.params.mix,
