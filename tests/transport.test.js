@@ -118,3 +118,26 @@ test('stoppedByUs tells transport stops from hand-made ones', () => {
   t.playAll();
   assert.equal(t.stoppedByUs(1), false);
 });
+
+test('after stop all, removing every module leaves the transport not stopped, so the next module plays', () => {
+  const mk = (id) => ({ id, running: true, start() { this.running = true; }, stop() { this.running = false; } });
+  const t = createTransport();
+  t.register(mk(1));
+  t.stopAll();
+  assert.equal(t.isStopped(), true);
+  t.unregister(1);
+  assert.equal(t.isStopped(), false);
+  const next = mk(2);
+  t.register(next);
+  assert.equal(next.running, true);
+});
+
+test('removing one module keeps the transport stopped while another is still held by stop all', () => {
+  const mk = (id) => ({ id, running: true, start() { this.running = true; }, stop() { this.running = false; } });
+  const t = createTransport();
+  t.register(mk(1));
+  t.register(mk(2));
+  t.stopAll();
+  t.unregister(1);
+  assert.equal(t.isStopped(), true);
+});

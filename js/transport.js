@@ -15,6 +15,7 @@ export function createTransport() {
     unregister(id) {
       modules.delete(id);
       stoppedByUs.delete(id);
+      if (stopped && stoppedByUs.size === 0) stopped = false; // nothing is held by [stop all] any more: the next module must play
     },
     /** A hand-made start/stop: the module is no longer ours to restart. */
     manual(id) {
