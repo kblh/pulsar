@@ -197,6 +197,11 @@ input[type=range] { flex: 1 1 8ch; accent-color: var(--accent); padding: 0; }
   min-height: var(--transport-h); padding: 0 var(--pad) env(safe-area-inset-bottom);
   background: var(--bg); border-top: 1px solid var(--line);
 }
+.transport .hud-slider { flex: 1 1 0; }
+.transport:not(.tempo-on) .hud-slider { opacity: 0.55; }
+.transport .icon-btn[aria-pressed=false] { color: var(--dim); }
+.transport .icon-btn[aria-pressed=true] { color: var(--accent); text-shadow: 0 0 8px var(--glow); }
+body.tempo-on .bpm-row { opacity: 0.45; }
 .status { position: fixed; left: var(--pad); right: var(--pad); bottom: calc(var(--transport-h) + env(safe-area-inset-bottom) + 8px); z-index: 30; }
 #scene-panel {
   margin-bottom: var(--pad); max-width: 480px; max-height: 60vh; overflow: auto;

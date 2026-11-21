@@ -4,6 +4,7 @@ import { cleanName, NAME_MAX, serializeModule, addModuleFromData, MAX_MODULES } 
 import { mountScenes, defaultDownload } from './scenes-ui.js';
 import { addMenuItems, menuItem, createMenu, createStatus } from './menu.js';
 import { shouldHandleSpace } from './keys.js';
+import { DEFAULT_TEMPO, TEMPO_MIN, TEMPO_MAX } from './timing.js';
 import { MAX_FILE_BYTES } from './scene-file.js';
 import { moduleFilename, moduleToFile, parseModuleFile } from './module-file.js';
 import { createCard } from './card.js';
@@ -55,7 +56,9 @@ function paramSlider(label, m, key, { min, max, step, format = String, nudge = s
       s.set(m.params[key]);
     },
   });
-  return row(label, s.node);
+  const r = row(label, s.node);
+  if (key === 'bpm') r.classList.add('bpm-row'); // dimmed while the global BPM is on
+  return r;
 }
 
 /** A text grid row: one span per step; update() paints the pattern and playhead. */
@@ -472,6 +475,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
           }
           clearTimeout(newTimer);
           sceneUi.clear();
+          engine.setTempo(DEFAULT_TEMPO);
           return close();
         },
       });
@@ -529,7 +533,17 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     if (showsPlay()) engine.playAll(); else engine.stopAll();
   };
   global.onclick = togglePlay;
-  transportEl.append(global);
+  const tempoToggle = iconButton('metronome', { label: 'global bpm' });
+  tempoToggle.onclick = () => engine.setTempo({ on: !engine.tempo.on });
+  const tempoSlider = createSlider({
+    min: TEMPO_MIN, max: TEMPO_MAX, step: 1, nudge: 1, format: String, ariaLabel: 'global bpm', value: engine.tempo.bpm,
+    onInput: (v) => {
+      engine.setTempo({ bpm: v });
+      tempoSlider.set(engine.tempo.bpm);
+    },
+  });
+  transportEl.append(global, tempoToggle, tempoSlider.node);
+  let tempoSig = '';
   document.addEventListener('keydown', (e) => {
     if (!shouldHandleSpace(e)) return;
     e.preventDefault(); // the page must not scroll
@@ -541,6 +555,18 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     if (global.dataset.state !== String(play)) {
       global.dataset.state = String(play);
       setIcon(global, play ? 'play' : 'stop', play ? 'play all' : 'stop all');
+    }
+    const t = engine.tempo;
+    const tSig = `${t.on}:${t.bpm}:${panels.size}`;
+    if (tSig !== tempoSig) { // a scene load or a new module can change what the tempo controls show
+      tempoSig = tSig;
+      tempoToggle.setAttribute('aria-pressed', String(t.on));
+      tempoSlider.set(t.bpm);
+      transportEl.classList.toggle('tempo-on', t.on);
+      document.body.classList.toggle('tempo-on', t.on);
+      for (const r of document.querySelectorAll('.bpm-row')) {
+        if (t.on) r.title = 'global BPM is on'; else r.removeAttribute('title');
+      }
     }
     const sig = engine.effects.map((fx) => `${fx.id}:${fx.name}`).join();
     if (sig !== effectsSig) {
