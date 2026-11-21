@@ -4,6 +4,7 @@ import { cleanName, NAME_MAX, serializeModule, addModuleFromData, MAX_MODULES } 
 import { mountScenes, defaultDownload } from './scenes-ui.js';
 import { addMenuItems, menuItem, createMenu, createStatus } from './menu.js';
 import { shouldHandleSpace } from './keys.js';
+import { ACCENTS, deriveTheme } from './theme.js';
 import { DEFAULT_TEMPO, TEMPO_MIN, TEMPO_MAX } from './timing.js';
 import { MAX_FILE_BYTES } from './scene-file.js';
 import { moduleFilename, moduleToFile, parseModuleFile } from './module-file.js';
@@ -264,7 +265,7 @@ function rhythmicControls(m) {
   ];
 }
 
-export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addMenuEl, menuBtn, mainMenuEl, statusEl, transportEl, scenePanelEl, store }) {
+export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addMenuEl, menuBtn, mainMenuEl, statusEl, transportEl, scenePanelEl, store, accent }) {
   const panels = new Map(); // module id -> { card, rows, module, toggle }
   const fxCards = new Map(); // effect id -> { card, fx, bypass, controls }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -483,6 +484,29 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
       if (scenes) {
         panel.append(menuItem({ icon: 'load', label: 'load', onSelect: () => scenes.openLoad() }));
         panel.append(menuItem({ icon: 'save', label: 'save', onSelect: () => scenes.openSave() }));
+      }
+      if (accent) {
+        const swatches = el('div', { className: 'swatches' });
+        const paint = () => swatches.querySelectorAll('.swatch').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === accent.get())));
+        for (const a of ACCENTS) {
+          const b = el('button', { type: 'button', className: 'swatch', title: a.name });
+          b.dataset.id = a.id;
+          b.setAttribute('aria-label', a.name);
+          b.style.background = deriveTheme(a.hue)['--accent'];
+          b.onclick = () => {
+            accent.set(a.id);
+            paint();
+          };
+          swatches.append(b);
+        }
+        paint();
+        const themeItem = menuItem({
+          icon: 'theme',
+          label: 'theme',
+          keepOpen: true,
+          onSelect: () => (swatches.isConnected ? swatches.remove() : themeItem.after(swatches)), // stays open, so colours can be tried
+        });
+        panel.append(themeItem);
       }
     },
   });

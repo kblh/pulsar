@@ -1,6 +1,7 @@
 import { createEngine } from './engine.js';
 import { mountUi } from './ui.js';
 import { createSceneStore } from './scene-store.js';
+import { loadAccent, saveAccent, applyTheme } from './theme.js';
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
@@ -9,7 +10,19 @@ try {
   storage = window.localStorage; // reading it can throw when site data is blocked
 } catch { /* the store then reports 'storage unavailable' */ }
 
+const themeMeta = document.querySelector('meta[name=theme-color]');
+let accent = loadAccent(storage);
+applyTheme(document.documentElement, themeMeta, accent);
+
 mountUi({
+  accent: {
+    get: () => accent,
+    set(id) {
+      accent = id;
+      applyTheme(document.documentElement, themeMeta, id);
+      saveAccent(storage, id);
+    },
+  },
   store: createSceneStore(storage),
   scenePanelEl: document.getElementById('scene-panel'),
   engine: createEngine(),

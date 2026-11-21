@@ -9,11 +9,14 @@ Generativní hudební sekvencer v prohlížeči (Web Audio API) s vzhledem termi
 - **Moduly** přidáváš tlačítkem `[+]`: melodic, rhythmic a drone. Každý má vlastní tempo a hodiny a sám se vyvíjí. Melodic a drone mají **dva oscilátory** (vlna, poměr `mix` a rozladění `detune`). Jednotlivé vlny mají korekci hlasitosti (`WAVE_GAIN` v `js/synth.js`), aby square a saw nepřehlušily sine.
 - **Karty:** efekty nahoře, moduly pod nimi, sekvence dole. Všechno je sbalené (jméno, play/stop a hlasitost, u efektu bypass); klik otevře detail na celou obrazovku, zavře ho Esc, tlačítko nebo Zpět.
 - **Ovládání:** HUD slidery na Pointer Events (s tlačítky −/+ pro přesné hodnoty; myš nastaví hodnotu hned, prst při tapu nebo po vodorovném tahu a svislý swipe jen scrolluje), přepínače a ADSR obálka s tlumeným tažením uzlů (uzel se hýbe 0,4× pohybu prstu); vše jde ovládat dotykem i klávesnicí od šířky 320 px. Textová pole jsou jen pro `notes` a `rhythm`.
+- **Tlačítka a menu:** všechny akce jsou grafické ikony. V headeru je jen název, `+` (menu s moduly, efekty, sekvencí a importem modulu) a hamburger (new scene, load, save, theme).
+- **Transport bar:** dole, stále viditelný: play/stop všeho (na desktopu i mezerník, mimo textová pole) a **globální BPM**. Přepínač zapne společné tempo pro všechny tempové moduly (drone ho nemá), vypnutý nechá každý modul hrát vlastním BPM. Globální BPM se ukládá do scény.
+- **Theme:** v hamburgeru jde vybrat barevný akcent (cyan, zelená, jantar, magenta, fialová, červená); volba se pamatuje v zařízení.
 - **Mix:** hlasitost a pan pro každý modul, globální `play all` / `stop all`.
-- **Efekty** (instance přes `[+]`, až 3 sendy na modul, každý jde obejít): reverb (`width`), delay (`pingpong`), třípásmový equalizer a bitcrusher (potřebuje `AudioWorklet`, jinak se nenabídne). EQ je send, upraví jen přimíchanou kopii.
+- **Efekty** (instance přes menu `+`, až 3 sendy na modul, každý jde obejít): reverb (`width`), delay (`pingpong`), třípásmový equalizer a bitcrusher (potřebuje `AudioWorklet`, jinak se nenabídne). EQ je send, upraví jen přimíchanou kopii.
 - **Sekvence:** řada částí, v každé zní vybrané moduly po zadanou dobu (1–600 s), volitelně dokola. Částí se dá poskládat skladba, i tak, že tlačítkem „use running“ zapíšeš moduly, které právě hrají.
-- **Scény:** `[save]` / `[load]` uloží nastavení (včetně sekvence) do prohlížeče (localStorage); scény jdou přejmenovat, smazat a exportovat nebo importovat jako JSON.
-- **Moduly do souboru:** `[export]` v detailu modulu stáhne `<jméno>.pulsar-module.json`, `[import module]` v menu `[+]` je přidá zpět (sendy se neukládají).
+- **Scény:** `save` / `load` v hamburgeru uloží nastavení (včetně sekvence) do prohlížeče (localStorage); scény jdou přejmenovat, smazat a exportovat nebo importovat jako JSON.
+- **Moduly do souboru:** ikona export v detailu modulu stáhne `<jméno>.pulsar-module.json`, `import module` v menu `+` je přidá zpět (sendy se neukládají).
 - **PWA:** jde nainstalovat a funguje offline.
 
 Zvuk se spustí až po prvním kliknutí, to vyžaduje prohlížeč.
