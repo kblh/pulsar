@@ -6,9 +6,9 @@ Generativní hudební sekvencer v prohlížeči (Web Audio API) s vzhledem termi
 
 ## Co umí
 
-- **Moduly** přidáváš tlačítkem `[+]`: melodic, rhythmic a drone. Každý má vlastní tempo a hodiny a sám se vyvíjí. Melodic a drone mají **dva oscilátory** (vlna, poměr `mix` a rozladění `detune`).
+- **Moduly** přidáváš tlačítkem `[+]`: melodic, rhythmic a drone. Každý má vlastní tempo a hodiny a sám se vyvíjí. Melodic a drone mají **dva oscilátory** (vlna, poměr `mix` a rozladění `detune`). Jednotlivé vlny mají korekci hlasitosti (`WAVE_GAIN` v `js/synth.js`), aby square a saw nepřehlušily sine.
 - **Karty:** efekty nahoře, moduly pod nimi, sekvence dole. Všechno je sbalené (jméno, play/stop a hlasitost, u efektu bypass); klik otevře detail na celou obrazovku, zavře ho Esc, tlačítko nebo Zpět.
-- **Ovládání:** HUD slidery (s tlačítky −/+ pro přesné hodnoty), přepínače a ADSR obálka s tažením uzlů; vše jde ovládat dotykem i klávesnicí od šířky 320 px. Textová pole jsou jen pro `notes` a `rhythm`.
+- **Ovládání:** HUD slidery na Pointer Events (s tlačítky −/+ pro přesné hodnoty; myš nastaví hodnotu hned, prst při tapu nebo po vodorovném tahu a svislý swipe jen scrolluje), přepínače a ADSR obálka s tlumeným tažením uzlů (uzel se hýbe 0,4× pohybu prstu); vše jde ovládat dotykem i klávesnicí od šířky 320 px. Textová pole jsou jen pro `notes` a `rhythm`.
 - **Mix:** hlasitost a pan pro každý modul, globální `play all` / `stop all`.
 - **Efekty** (instance přes `[+]`, až 3 sendy na modul, každý jde obejít): reverb (`width`), delay (`pingpong`), třípásmový equalizer a bitcrusher (potřebuje `AudioWorklet`, jinak se nenabídne). EQ je send, upraví jen přimíchanou kopii.
 - **Sekvence:** řada částí, v každé zní vybrané moduly po zadanou dobu (1–600 s), volitelně dokola. Částí se dá poskládat skladba, i tak, že tlačítkem „use running“ zapíšeš moduly, které právě hrají.
