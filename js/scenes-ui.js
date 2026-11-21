@@ -15,28 +15,18 @@ export function defaultDownload(filename, text) {
 }
 
 /**
- * [save] [load] in the header bar and the save row / scene list in the panel below it.
- * `sceneUi` is what applyScene needs: { clear, addFxPanel, addModulePanel, addSequencePanel }.
+ * The save row and the scene list in the panel below the header; the hamburger menu opens them (`openSave`, `openLoad`).
+ * `sceneUi` is what applyScene needs: { clear, addFxPanel, addModulePanel, addSequencePanel }. `say(text)` shows a status message.
  */
-export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download = defaultDownload }) {
+export function mountScenes({ engine, store, sceneUi, panelEl, say, download = defaultDownload }) {
   let mode = null; // 'save' | 'load' | null
   let lastName = '';
   let pendingDelete = null;
   let deleteTimer = null;
   let renaming = null;
-  let messageTimer = null;
-
-  const message = el('span', { className: 'muted' });
-  const say = (text) => {
-    message.textContent = text;
-    clearTimeout(messageTimer);
-    messageTimer = setTimeout(() => { message.textContent = ''; }, 5000);
-  };
 
   const fileInput = el('input', { type: 'file', accept: '.json,application/json', multiple: true, hidden: true });
-  const saveBtn = iconButton('save', { label: 'save scene' });
-  const loadBtn = iconButton('load', { label: 'load scene' });
-  barEl.append(saveBtn, ' ', loadBtn, ' ', message, fileInput);
+  document.body.append(fileInput);
 
   const disarmDelete = () => {
     clearTimeout(deleteTimer);
@@ -49,8 +39,12 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
     renaming = null;
     render();
   };
-  saveBtn.onclick = () => toggleMode('save');
-  loadBtn.onclick = () => toggleMode('load');
+  const setMode = (next) => {
+    mode = next;
+    disarmDelete();
+    renaming = null;
+    render();
+  };
 
   function doSave(name) {
     if (!engine.modules.length && !engine.effects.length) {
@@ -250,4 +244,5 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
     }
   }
   render();
+  return { openSave: () => setMode('save'), openLoad: () => setMode('load') };
 }

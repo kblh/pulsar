@@ -83,7 +83,9 @@ export function createMenu({ button, panel, render }) {
   button.addEventListener('click', () => (isOpen ? api.close() : api.open()));
   panel.addEventListener('click', (e) => {
     const item = e.target.closest('[role=menuitem]');
-    if (item && !item.disabled && !item.dataset.keepOpen) api.close();
+    if (!item || item.disabled || item.dataset.keepOpen) return;
+    const a = document.activeElement;
+    api.close({ refocus: !a || a === document.body || panel.contains(a) }); // an item may have moved focus on purpose
   });
   return api;
 }

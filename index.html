@@ -2,7 +2,7 @@
 <html lang="cs">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>pulsar</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="manifest" href="manifest.webmanifest">
@@ -11,9 +11,12 @@
 <body>
   <header class="bar">
     <span class="brand"><span class="prompt">$</span> pulsar <span class="cursor">_</span></span>
-    <span id="transport"></span>
-    <span id="scenes"></span>
-    <span id="adder"></span>
+    <span class="bar-actions">
+      <button id="add-btn" class="icon-btn" type="button"></button>
+      <button id="menu-btn" class="icon-btn" type="button"></button>
+    </span>
+    <div id="add-menu" class="menu" role="menu" hidden></div>
+    <div id="main-menu" class="menu" role="menu" hidden></div>
   </header>
   <div id="scene-panel"></div>
   <main>
@@ -21,6 +24,8 @@
     <section class="section"><h2 class="section-title">modules</h2><div id="modules" class="cards"></div></section>
     <section class="section"><h2 class="section-title">sequence</h2><div id="sequence" class="cards"></div></section>
   </main>
+  <div id="status" class="status" role="status"></div>
+  <nav id="transport" class="transport" aria-label="transport"></nav>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

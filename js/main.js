@@ -11,12 +11,15 @@ try {
 
 mountUi({
   store: createSceneStore(storage),
-  scenesEl: document.getElementById('scenes'),
   scenePanelEl: document.getElementById('scene-panel'),
   engine: createEngine(),
   effectsEl: document.getElementById('effects'),
   modulesEl: document.getElementById('modules'),
   sequenceEl: document.getElementById('sequence'),
-  adderEl: document.getElementById('adder'),
+  addBtn: document.getElementById('add-btn'),
+  addMenuEl: document.getElementById('add-menu'),
+  menuBtn: document.getElementById('menu-btn'),
+  mainMenuEl: document.getElementById('main-menu'),
+  statusEl: document.getElementById('status'),
   transportEl: document.getElementById('transport'),
 });

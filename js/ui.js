@@ -2,6 +2,8 @@ import { SCALES } from './scales.js';
 import { WAVES, ROOTS } from './options.js';
 import { cleanName, NAME_MAX, serializeModule, addModuleFromData, MAX_MODULES } from './scene.js';
 import { mountScenes, defaultDownload } from './scenes-ui.js';
+import { addMenuItems, menuItem, createMenu, createStatus } from './menu.js';
+import { shouldHandleSpace } from './keys.js';
 import { MAX_FILE_BYTES } from './scene-file.js';
 import { moduleFilename, moduleToFile, parseModuleFile } from './module-file.js';
 import { createCard } from './card.js';
@@ -9,8 +11,7 @@ import { iconButton, setIcon } from './icons.js';
 import { createSlider, createSegmented } from './controls.js';
 import { createEnvelopeEditor } from './envelope.js';
 import { splitRoot, joinRoot, formatCents } from './hud.js';
-import { FX_TYPES, FX_NEEDS_WORKLET } from './fx.js';
-import { FX_FIELDS, FX_LABELS } from './fx-fields.js';
+import { FX_FIELDS } from './fx-fields.js';
 import { mountSequenceCard } from './sequence-ui.js';
 import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
@@ -260,7 +261,7 @@ function rhythmicControls(m) {
   ];
 }
 
-export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, transportEl, scenesEl, scenePanelEl, store }) {
+export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addMenuEl, menuBtn, mainMenuEl, statusEl, transportEl, scenePanelEl, store }) {
   const panels = new Map(); // module id -> { card, rows, module, toggle }
   const fxCards = new Map(); // effect id -> { card, fx, bypass, controls }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -398,59 +399,91 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
     }
   }
 
-  const menu = el('span', { className: 'muted' });
-  const plus = iconButton('plus', { label: 'add' });
-  const showMenu = (open) => {
-    menu.replaceChildren();
-    if (!open) return;
-    const choose = (factory) => () => {
-      showMenu(false);
-      add(factory);
-    };
-    const b1 = iconButton('note', { label: 'melodic' });
-    const b2 = iconButton('drum', { label: 'rhythmic' });
-    const b3 = iconButton('wave', { label: 'drone' });
-    b1.onclick = choose(createMelodicModule);
-    b2.onclick = choose(createRhythmicModule);
-    b3.onclick = choose(createDroneModule);
-    const fxButtons = FX_TYPES.filter((type) => !FX_NEEDS_WORKLET.includes(type) || engine.hasWorklet()).flatMap((type) => {
-      const b = iconButton('fx', { label: FX_LABELS[type] });
-      b.onclick = () => { showMenu(false); addEffect(type); };
-      return [' ', b];
-    });
-    const seqButtons = [];
-    if (!engine.sequence) {
-      const b = iconButton('list', { label: 'sequence' });
-      b.onclick = () => {
-        showMenu(false);
-        let seq;
-        try {
-          seq = engine.addSequence({});
-        } catch {
-          return; // there is one already
-        }
-        addSequencePanel(seq);
-      };
-      seqButtons.push(' ', b);
-    }
-    const importBtn = iconButton('import', { label: 'import module' });
-    importBtn.onclick = () => {
-      showMenu(false);
+  const say = createStatus(statusEl);
+  let scenes = null; // the save/load panel, when there is a scene store
+
+  const sceneUi = {
+    clear() {
+      detail.close();
+      for (const m of [...engine.modules]) removeModulePanel(m.id);
+      for (const fx of [...engine.effects]) removeFxPanel(fx.id);
+      removeSequencePanel();
+    },
+    addFxPanel,
+    addModulePanel: addPanel,
+    addSequencePanel,
+  };
+
+  setIcon(addBtn, 'plus', 'add');
+  setIcon(menuBtn, 'menu', 'menu');
+  const addActions = {
+    melodic: () => add(createMelodicModule),
+    rhythmic: () => add(createRhythmicModule),
+    drone: () => add(createDroneModule),
+    sequence: () => {
+      let seq;
+      try {
+        seq = engine.addSequence({});
+      } catch {
+        return; // there is one already
+      }
+      addSequencePanel(seq);
+    },
+    import: () => {
       engine.resume().catch(() => {}); // here is the user's gesture; after the file picker there may be none (iOS)
       moduleInput.click();
-    };
-    menu.append(' ', b1, ' ', b2, ' ', b3, ...fxButtons, ...seqButtons, ' ', importBtn);
+    },
   };
-  plus.onclick = () => showMenu(menu.childElementCount === 0);
+  createMenu({
+    button: addBtn,
+    panel: addMenuEl,
+    render(panel) {
+      for (const item of addMenuItems({ hasWorklet: engine.hasWorklet(), hasSequence: !!engine.sequence })) {
+        const run = item.id.startsWith('fx:') ? () => addEffect(item.id.slice(3)) : addActions[item.id];
+        panel.append(menuItem({ icon: item.icon, label: item.label, onSelect: run }));
+      }
+    },
+  });
+
+  let newTimer = null;
+  createMenu({
+    button: menuBtn,
+    panel: mainMenuEl,
+    render(panel, close) {
+      clearTimeout(newTimer);
+      let armed = false;
+      const isEmpty = () => !engine.modules.length && !engine.effects.length && !engine.sequence;
+      const newItem = menuItem({
+        icon: 'new',
+        label: 'new scene',
+        keepOpen: true,
+        onSelect() {
+          if (isEmpty()) return close();
+          if (!armed) { // a second tap confirms: this empties the whole scene
+            armed = true;
+            setIcon(newItem, 'check');
+            newItem.querySelector('span').textContent = 'sure? tap again';
+            newTimer = setTimeout(() => {
+              armed = false;
+              setIcon(newItem, 'new');
+              newItem.querySelector('span').textContent = 'new scene';
+            }, 5000);
+            return undefined;
+          }
+          clearTimeout(newTimer);
+          sceneUi.clear();
+          return close();
+        },
+      });
+      panel.append(newItem);
+      if (scenes) {
+        panel.append(menuItem({ icon: 'load', label: 'load', onSelect: () => scenes.openLoad() }));
+        panel.append(menuItem({ icon: 'save', label: 'save', onSelect: () => scenes.openSave() }));
+      }
+    },
+  });
 
   // Importing module files: each file becomes a new module (its sends stay empty, effects are not part of a module file).
-  const importMessage = el('span', { className: 'muted' });
-  let importTimer = null;
-  const sayImport = (text) => {
-    importMessage.textContent = text; // text only: file names are never markup
-    clearTimeout(importTimer);
-    importTimer = setTimeout(() => { importMessage.textContent = ''; }, 5000);
-  };
   const moduleInput = el('input', { type: 'file', accept: '.json,application/json', multiple: true, hidden: true });
   async function importModules(files) {
     let added = 0;
@@ -479,23 +512,29 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
         skip(file, 'could not be added');
       }
     }
-    sayImport(`imported ${added}${skipped ? `, skipped ${skipped}: ${reasons.slice(0, 3).join('; ')}` : ''}`);
+    say(`imported ${added}${skipped ? `, skipped ${skipped}: ${reasons.slice(0, 3).join('; ')}` : ''}`);
   }
   moduleInput.onchange = () => {
     const files = [...moduleInput.files];
     moduleInput.value = ''; // the same file can be picked again
     if (files.length) importModules(files);
   };
-  adderEl.append(plus, menu, importMessage, moduleInput);
+  document.body.append(moduleInput);
 
   // Offer [play all] whenever nothing is actually running (or the transport was stopped).
   const showsPlay = () => engine.isStopped() || (engine.hasModules() && !engine.anyRunning());
   const global = iconButton('play', { label: 'play all', className: 'play' });
-  global.onclick = async () => {
+  const togglePlay = async () => {
     await engine.resume();
     if (showsPlay()) engine.playAll(); else engine.stopAll();
   };
+  global.onclick = togglePlay;
   transportEl.append(global);
+  document.addEventListener('keydown', (e) => {
+    if (!shouldHandleSpace(e)) return;
+    e.preventDefault(); // the page must not scroll
+    togglePlay();
+  });
 
   function frame() {
     const play = showsPlay();
@@ -527,18 +566,5 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
   }
   requestAnimationFrame(frame);
 
-  if (scenesEl && scenePanelEl && store) {
-    const sceneUi = {
-      clear() {
-        detail.close();
-        for (const m of [...engine.modules]) removeModulePanel(m.id);
-        for (const fx of [...engine.effects]) removeFxPanel(fx.id);
-        removeSequencePanel();
-      },
-      addFxPanel,
-      addModulePanel: addPanel,
-      addSequencePanel,
-    };
-    mountScenes({ engine, store, sceneUi, barEl: scenesEl, panelEl: scenePanelEl });
-  }
+  if (scenePanelEl && store) scenes = mountScenes({ engine, store, sceneUi, panelEl: scenePanelEl, say });
 }
