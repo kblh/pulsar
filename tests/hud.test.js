@@ -264,3 +264,22 @@ test('damped drag reaches both ends of a segment and stays inside it, and moves 
   assert.deepEqual(to(0), { a: round2ish(env.a) });
 });
 function round2ish(v) { return Math.round(v * 100) / 100; }
+
+test('touch gesture: a mostly vertical move never starts a drag, however far it goes sideways', () => {
+  const g = createGesture({ pointerType: 'touch' });
+  g.down(100, 100);
+  assert.equal(g.move(109, 124), false, 'dx 9 but dy 24: a scroll');
+  assert.equal(g.move(112, 130), false);
+  assert.equal(g.up(112), false);
+});
+
+test('touch gesture: a mostly horizontal move starts a drag and cancel then says that a drag had begun', () => {
+  const g = createGesture({ pointerType: 'touch' });
+  g.down(100, 100);
+  assert.equal(g.move(112, 104), true);
+  assert.equal(g.cancel(), true);
+  const t = createGesture({ pointerType: 'touch' });
+  t.down(100, 100);
+  assert.equal(t.cancel(), false, 'nothing had been applied');
+  assert.equal(createGesture({ pointerType: 'touch' }).cancel(), false);
+});

@@ -146,34 +146,41 @@ export function keyValue(key, cur, { min, max, step, scale = 'linear' }) {
 
 /**
  * Tells a slider when to set its value from the pointer. Mouse and pen: on press and while moving.
- * Touch: on release if the finger hardly moved (a tap), or once it moved past the slop (a drag).
+ * Touch: on release if the finger hardly moved (a tap), or once it moved sideways past the slop (a drag).
+ * `cancel()` returns whether a drag had begun, so the caller can undo what it set.
  * `true` means "set the value from this position now".
  */
 export function createGesture({ pointerType, slop = SLIDER_SLOP }) {
   const touch = pointerType === 'touch';
   let active = false;
   let x0 = 0;
+  let y0 = 0;
   let dragging = false;
+  /** Ends the gesture; true when a drag had begun (a value may have been set from it). */
   const end = () => {
+    const was = active && dragging;
     active = false;
     dragging = false;
+    return was;
   };
   return {
     get active() {
       return active;
     },
-    down(x) {
+    down(x, y) {
       const px = num(x);
       if (px === null) return false;
       active = true;
       x0 = px;
+      y0 = num(y) ?? 0;
       dragging = !touch;
       return !touch;
     },
-    move(x) {
+    move(x, y) {
       const px = num(x);
       if (!active || px === null) return false;
-      if (!dragging && Math.abs(px - x0) > slop) dragging = true;
+      // a finger that moves mostly up or down is scrolling the page, however far it drifts sideways
+      if (!dragging && Math.abs(px - x0) > slop && Math.abs(px - x0) > Math.abs((num(y) ?? y0) - y0)) dragging = true;
       return dragging;
     },
     up(x) {

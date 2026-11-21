@@ -44,20 +44,22 @@ export function createSlider({ min, max, step, value, scale = 'linear', format, 
 
   let gesture = null;
   let pointerId = null;
+  let startValue = cur; // what a touch drag returns to when the browser takes the gesture over for scrolling
   track.addEventListener('pointerdown', (e) => {
     if (gesture?.active) return; // a second finger while one is dragging
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     pointerId = e.pointerId;
+    startValue = cur;
     gesture = createGesture({ pointerType: e.pointerType });
     try { track.setPointerCapture(e.pointerId); } catch { /* not an active pointer (synthetic event) */ }
     if (e.pointerType !== 'touch') {
       e.preventDefault();
       track.focus();
     }
-    if (gesture.down(e.clientX)) apply(e.clientX);
+    if (gesture.down(e.clientX, e.clientY)) apply(e.clientX);
   });
   track.addEventListener('pointermove', (e) => {
-    if (gesture && e.pointerId === pointerId && gesture.move(e.clientX)) apply(e.clientX);
+    if (gesture && e.pointerId === pointerId && gesture.move(e.clientX, e.clientY)) apply(e.clientX);
   });
   track.addEventListener('pointerup', (e) => {
     if (gesture && e.pointerId === pointerId && gesture.up(e.clientX)) apply(e.clientX);
@@ -65,7 +67,10 @@ export function createSlider({ min, max, step, value, scale = 'linear', format, 
   const cancel = (e) => {
     if (gesture && e.pointerId === pointerId) gesture.cancel();
   };
-  track.addEventListener('pointercancel', cancel);
+  track.addEventListener('pointercancel', (e) => {
+    // a diagonal swipe may have moved the value before the browser decided it was a scroll: put it back
+    if (gesture && e.pointerId === pointerId && gesture.cancel() && e.pointerType === 'touch') change(startValue);
+  });
   track.addEventListener('lostpointercapture', cancel);
 
   track.addEventListener('keydown', (e) => {
