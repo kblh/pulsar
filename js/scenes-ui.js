@@ -1,3 +1,4 @@
+import { iconButton } from './icons.js';
 import { serializeScene, applyScene, cleanName } from './scene.js';
 import { sceneToFile, scenesToFile, parseSceneFile, uniqueName, MAX_FILE_BYTES } from './scene-file.js';
 
@@ -33,8 +34,8 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
   };
 
   const fileInput = el('input', { type: 'file', accept: '.json,application/json', multiple: true, hidden: true });
-  const saveBtn = el('button', { textContent: '[save]' });
-  const loadBtn = el('button', { textContent: '[load]' });
+  const saveBtn = iconButton('save', { label: 'save scene' });
+  const loadBtn = iconButton('load', { label: 'load scene' });
   barEl.append(saveBtn, ' ', loadBtn, ' ', message, fileInput);
 
   const disarmDelete = () => {
@@ -172,11 +173,11 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
       if (e.key === 'Enter') doSave(input.value);
       else if (e.key === 'Escape') toggleMode('save');
     };
-    const ok = el('button', { textContent: '[ok]' });
+    const ok = iconButton('check', { label: 'save' });
     ok.onclick = () => doSave(input.value);
-    const cancel = el('button', { textContent: '[cancel]' });
+    const cancel = iconButton('close', { label: 'cancel' });
     cancel.onclick = () => toggleMode('save');
-    const exportFile = el('button', { textContent: '[export file]' });
+    const exportFile = iconButton('export', { label: 'export file' });
     exportFile.onclick = () => exportCurrent(input.value);
     queueMicrotask(() => input.focus());
     return el('div', { className: 'row' }, el('label', { textContent: 'save as' }), input, ok, exportFile, cancel);
@@ -206,12 +207,12 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
     }
     const name = el('button', { textContent: entry.name, className: 'scene-name' });
     name.onclick = () => doLoad(entry);
-    const exportBtn = el('button', { textContent: '[export]' });
+    const exportBtn = iconButton('export', { label: 'export scene' });
     exportBtn.onclick = () => exportEntry(entry);
-    const rename = el('button', { textContent: '[rename]' });
+    const rename = iconButton('rename', { label: 'rename scene' });
     rename.onclick = () => { renaming = entry.id; disarmDelete(); render(); };
     const sure = pendingDelete === entry.id;
-    const del = el('button', { textContent: sure ? '[sure?]' : '[x]' });
+    const del = iconButton(sure ? 'check' : 'trash', { label: sure ? 'sure? tap again' : 'delete scene' });
     del.onclick = () => {
       disarmDelete();
       if (!sure) {
@@ -237,11 +238,11 @@ export function mountScenes({ engine, store, sceneUi, barEl, panelEl, download =
       const scenes = store.list();
       if (!scenes.length) panelEl.append(el('div', { className: 'muted', textContent: 'no saved scenes' }));
       for (const entry of scenes) panelEl.append(sceneRow(entry));
-      const importBtn = el('button', { textContent: '[import]' });
+      const importBtn = iconButton('import', { label: 'import scenes' });
       importBtn.onclick = () => fileInput.click();
       const actions = el('div', { className: 'row' }, importBtn);
       if (scenes.length) {
-        const all = el('button', { textContent: '[export all]' });
+        const all = iconButton('export', { label: 'export all scenes' });
         all.onclick = exportAll;
         actions.append(all);
       }

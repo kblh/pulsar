@@ -1,3 +1,5 @@
+import { iconButton } from './icons.js';
+
 function el(tag, props = {}, ...children) {
   const e = Object.assign(document.createElement(tag), props);
   e.append(...children);
@@ -13,8 +15,7 @@ export function createCard({ kind, title, nameEditor, lead = [], quick = [], act
   // A real button, so the keyboard can open the card; clicking elsewhere on the card works too.
   const name = el('button', { className: 'card-name', type: 'button', textContent: title });
   name.setAttribute('aria-expanded', 'false');
-  const closeBtn = el('button', { className: 'card-close', type: 'button', textContent: '×', title: 'close' });
-  closeBtn.setAttribute('aria-label', 'close');
+  const closeBtn = iconButton('close', { label: 'close', className: 'card-close' });
   const head = el('div', { className: 'card-head' },
     ...lead,
     el('span', { className: 'card-title' }, name, el('span', { className: 'card-name-edit' }, nameEditor)),

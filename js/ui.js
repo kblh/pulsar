@@ -5,6 +5,7 @@ import { mountScenes, defaultDownload } from './scenes-ui.js';
 import { MAX_FILE_BYTES } from './scene-file.js';
 import { moduleFilename, moduleToFile, parseModuleFile } from './module-file.js';
 import { createCard } from './card.js';
+import { iconButton, setIcon } from './icons.js';
 import { createSlider, createSegmented } from './controls.js';
 import { createEnvelopeEditor } from './envelope.js';
 import { splitRoot, joinRoot, formatCents } from './hud.js';
@@ -162,8 +163,6 @@ function nameEditor(obj) {
   return node;
 }
 
-const PLAY = '\u25B6\uFE0E'; // text presentation: phones would draw a colour emoji otherwise
-
 /** One send slot: a target select (rebuilt by fill() when effects come and go) and a level slider. */
 function sendRow(engine, m, slot) {
   const sel = el('select');
@@ -314,8 +313,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
     const bypass = el('input', { type: 'checkbox', checked: fx.enabled, title: 'on / bypass' });
     bypass.setAttribute('aria-label', 'effect on');
     bypass.onchange = () => engine.setFxEnabled(fx, bypass.checked);
-    const remove = el('button', { textContent: '[remove]', type: 'button' });
-    remove.onclick = () => removeFxPanel(fx.id);
+    const remove = iconButton('trash', { label: 'remove effect', onClick: () => removeFxPanel(fx.id) });
     const controls = el('div', { className: 'fx-controls' }, ...fxControls(engine, fx));
     const card = createCard({
       kind: 'effect',
@@ -331,12 +329,12 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
   }
 
   function addPanel(m) {
-    const toggle = el('button', { className: 'play', type: 'button' });
-    toggle.onclick = () => engine.toggle(m);
-    const remove = el('button', { textContent: '[remove]', type: 'button' });
-    remove.onclick = () => removeModulePanel(m.id);
-    const exportBtn = el('button', { textContent: '[export]', type: 'button' });
-    exportBtn.onclick = () => defaultDownload(moduleFilename(m.name), moduleToFile(serializeModule(m, engine.stoppedByTransport)));
+    const toggle = iconButton('play', { label: 'start', className: 'play', onClick: () => engine.toggle(m) });
+    const remove = iconButton('trash', { label: 'remove module', onClick: () => removeModulePanel(m.id) });
+    const exportBtn = iconButton('export', {
+      label: 'export module',
+      onClick: () => defaultDownload(moduleFilename(m.name), moduleToFile(serializeModule(m, engine.stoppedByTransport))),
+    });
     const volume = createSlider({
       min: 0, max: 1, step: 0.01, ariaLabel: 'volume', value: m.volume ?? 1,
       onInput: (v) => {
@@ -401,7 +399,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
   }
 
   const menu = el('span', { className: 'muted' });
-  const plus = el('button', { textContent: '[+]' });
+  const plus = iconButton('plus', { label: 'add' });
   const showMenu = (open) => {
     menu.replaceChildren();
     if (!open) return;
@@ -409,20 +407,20 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
       showMenu(false);
       add(factory);
     };
-    const b1 = el('button', { textContent: '[melodic]' });
-    const b2 = el('button', { textContent: '[rhythmic]' });
-    const b3 = el('button', { textContent: '[drone]' });
+    const b1 = iconButton('note', { label: 'melodic' });
+    const b2 = iconButton('drum', { label: 'rhythmic' });
+    const b3 = iconButton('wave', { label: 'drone' });
     b1.onclick = choose(createMelodicModule);
     b2.onclick = choose(createRhythmicModule);
     b3.onclick = choose(createDroneModule);
     const fxButtons = FX_TYPES.filter((type) => !FX_NEEDS_WORKLET.includes(type) || engine.hasWorklet()).flatMap((type) => {
-      const b = el('button', { textContent: `[${FX_LABELS[type]}]` });
+      const b = iconButton('fx', { label: FX_LABELS[type] });
       b.onclick = () => { showMenu(false); addEffect(type); };
       return [' ', b];
     });
     const seqButtons = [];
     if (!engine.sequence) {
-      const b = el('button', { textContent: '[sequence]' });
+      const b = iconButton('list', { label: 'sequence' });
       b.onclick = () => {
         showMenu(false);
         let seq;
@@ -435,7 +433,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
       };
       seqButtons.push(' ', b);
     }
-    const importBtn = el('button', { textContent: '[import module]' });
+    const importBtn = iconButton('import', { label: 'import module' });
     importBtn.onclick = () => {
       showMenu(false);
       engine.resume().catch(() => {}); // here is the user's gesture; after the file picker there may be none (iOS)
@@ -492,7 +490,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
 
   // Offer [play all] whenever nothing is actually running (or the transport was stopped).
   const showsPlay = () => engine.isStopped() || (engine.hasModules() && !engine.anyRunning());
-  const global = el('button', { className: 'play', type: 'button' });
+  const global = iconButton('play', { label: 'play all', className: 'play' });
   global.onclick = async () => {
     await engine.resume();
     if (showsPlay()) engine.playAll(); else engine.stopAll();
@@ -503,9 +501,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
     const play = showsPlay();
     if (global.dataset.state !== String(play)) {
       global.dataset.state = String(play);
-      global.textContent = play ? PLAY : '■';
-      global.title = play ? 'play all' : 'stop all';
-      global.setAttribute('aria-label', global.title);
+      setIcon(global, play ? 'play' : 'stop', play ? 'play all' : 'stop all');
     }
     const sig = engine.effects.map((fx) => `${fx.id}:${fx.name}`).join();
     if (sig !== effectsSig) {
@@ -522,9 +518,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, adderEl, tra
       const state = module.running ? 'running' : 'stopped';
       if (toggle.dataset.state !== state) {
         toggle.dataset.state = state;
-        toggle.textContent = module.running ? '■' : PLAY;
-        toggle.title = module.running ? 'stop' : 'start';
-        toggle.setAttribute('aria-label', toggle.title);
+        setIcon(toggle, module.running ? 'stop' : 'play', module.running ? 'stop' : 'start');
       }
       if (card.node.classList.contains('open')) rows.forEach((r) => r.update(module.playhead));
     }

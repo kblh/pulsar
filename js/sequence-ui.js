@@ -1,8 +1,7 @@
 import { createCard } from './card.js';
 import { createSlider } from './controls.js';
+import { iconButton, setIcon } from './icons.js';
 import { MAX_PARTS, MIN_DURATION, MAX_DURATION } from './sequence.js';
-
-const PLAY = '▶︎'; // text presentation: phones would draw a colour emoji otherwise
 
 function el(tag, props = {}, ...children) {
   const e = Object.assign(document.createElement(tag), props);
@@ -18,7 +17,7 @@ const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStar
  * (a module added or removed), never while a text field is being typed in.
  */
 export function mountSequenceCard({ engine, seq, detail, container, nameEditor, onRemove }) {
-  const toggle = el('button', { className: 'play', type: 'button' });
+  const toggle = iconButton('play', { label: 'play', className: 'play' });
   toggle.onclick = async () => {
     await engine.resume();
     const wasRunning = seq.running;
@@ -29,7 +28,7 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
   const status = el('span', { className: 'seq-status' });
   const bar = el('span', { className: 'seq-bar' });
   const quick = el('span', { className: 'seq-quick' }, status, el('span', { className: 'seq-progress' }, bar));
-  const remove = el('button', { textContent: '[remove]', type: 'button' });
+  const remove = iconButton('trash', { label: 'remove sequence' });
   remove.onclick = onRemove;
   const body = el('div', { className: 'seq-body' });
   const card = createCard({
@@ -48,12 +47,7 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
   let partEls = []; // { node, chips: [button] } per part
   const moduleSig = () => engine.modules.map((m) => m.id).join();
 
-  const btn = (text, label, onClick, extra = '') => {
-    const b = el('button', { type: 'button', className: `seq-btn ${extra}`.trim(), textContent: text });
-    b.setAttribute('aria-label', label);
-    b.onclick = onClick;
-    return b;
-  };
+  const btn = (iconName, label, onClick, extra = '') => iconButton(iconName, { label, className: `seq-btn ${extra}`.trim(), onClick });
 
   function syncChips(i) {
     const members = seq.parts[i]?.modules ?? [];
@@ -63,8 +57,8 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
   function renderBody() {
     sig = moduleSig();
     partEls = [];
-    const prev = btn('◀', 'previous part', () => seq.prev());
-    const next = btn('▶', 'next part', () => seq.next());
+    const prev = btn('prev', 'previous part', () => seq.prev());
+    const next = btn('next', 'next part', () => seq.next());
     const loopBox = el('input', { type: 'checkbox', checked: seq.loop });
     loopBox.onchange = () => seq.setLoop(loopBox.checked);
     const loop = el('label', { className: 'check seq-loop' }, loopBox, el('span', { textContent: 'loop' }));
@@ -94,13 +88,13 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
         };
         return chip;
       });
-      const useRunning = btn('use running', `use the running modules in part ${i + 1}`, () => {
+      const useRunning = btn('use', `use the running modules in part ${i + 1}`, () => {
         seq.useRunning(i);
         syncChips(i);
       }, 'wide');
-      const up = btn('↑', `move part ${i + 1} up`, () => { seq.movePart(i, -1); renderBody(); });
-      const down = btn('↓', `move part ${i + 1} down`, () => { seq.movePart(i, 1); renderBody(); });
-      const del = btn('×', `remove part ${i + 1}`, () => { seq.removePart(i); renderBody(); });
+      const up = btn('up', `move part ${i + 1} up`, () => { seq.movePart(i, -1); renderBody(); });
+      const down = btn('down', `move part ${i + 1} down`, () => { seq.movePart(i, 1); renderBody(); });
+      const del = btn('close', `remove part ${i + 1}`, () => { seq.removePart(i); renderBody(); });
       up.disabled = i === 0;
       down.disabled = i === seq.parts.length - 1;
       const node = el('div', { className: 'seq-part' },
@@ -112,7 +106,7 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
       return node;
     });
 
-    const add = btn('+ part', 'add a part', () => {
+    const add = btn('plus', 'add a part', () => {
       seq.addPart();
       renderBody();
     }, 'wide');
@@ -135,9 +129,7 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
       const state = seq.running ? 'running' : 'stopped';
       if (toggle.dataset.state !== state) {
         toggle.dataset.state = state;
-        toggle.textContent = seq.running ? '■' : PLAY;
-        toggle.title = seq.running ? 'stop' : 'play';
-        toggle.setAttribute('aria-label', toggle.title);
+        setIcon(toggle, seq.running ? 'stop' : 'play', seq.running ? 'stop' : 'play');
       }
       const n = seq.parts.length;
       const part = seq.parts[seq.index];
