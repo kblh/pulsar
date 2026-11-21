@@ -116,3 +116,81 @@ export function splitRoot(rootNote) {
 }
 
 export const joinRoot = (root, octave) => `${root}${octave}`;
+
+// ---- slider pointer handling ----
+export const SLIDER_SLOP = 8; // px a finger may move and still be a tap
+export const ENV_DRAG_GAIN = 0.4; // an envelope node moves this much of what the pointer moves
+
+/** Position of a pointer on a track, 0..1; a hidden or unusable track gives 0. */
+export function fractionFromX(x, rect) {
+  const px = num(x);
+  const left = num(rect?.left);
+  const width = num(rect?.width);
+  if (px === null || left === null || width === null || width <= 0) return 0;
+  return clamp((px - left) / width, 0, 1);
+}
+
+const KEY_STEPS = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 10, PageDown: -10 };
+
+/** The value a key press moves a slider to, or null for a key that is not a slider key. */
+export function keyValue(key, cur, { min, max, step, scale = 'linear' }) {
+  const opts = { min, max, step };
+  if (key === 'Home') return min;
+  if (key === 'End') return max;
+  if (!(key in KEY_STEPS)) return null;
+  const n = KEY_STEPS[key];
+  const base = num(cur) ?? min;
+  const size = scale === 'log' ? Math.max(step, base * 0.05) : step;
+  return snap(base + Math.sign(n) * Math.abs(n) * size, opts);
+}
+
+/**
+ * Tells a slider when to set its value from the pointer. Mouse and pen: on press and while moving.
+ * Touch: on release if the finger hardly moved (a tap), or once it moved past the slop (a drag).
+ * `true` means "set the value from this position now".
+ */
+export function createGesture({ pointerType, slop = SLIDER_SLOP }) {
+  const touch = pointerType === 'touch';
+  let active = false;
+  let x0 = 0;
+  let dragging = false;
+  const end = () => {
+    active = false;
+    dragging = false;
+  };
+  return {
+    get active() {
+      return active;
+    },
+    down(x) {
+      const px = num(x);
+      if (px === null) return false;
+      active = true;
+      x0 = px;
+      dragging = !touch;
+      return !touch;
+    },
+    move(x) {
+      const px = num(x);
+      if (!active || px === null) return false;
+      if (!dragging && Math.abs(px - x0) > slop) dragging = true;
+      return dragging;
+    },
+    up(x) {
+      const px = num(x);
+      const tap = active && touch && !dragging && px !== null && Math.abs(px - x0) <= slop;
+      end();
+      return tap;
+    },
+    cancel: end,
+  };
+}
+
+/** Where a dragged envelope node goes: its start position plus a fraction of the pointer movement. */
+export function dampedPoint(grab, pos, point, gain = ENV_DRAG_GAIN) {
+  const axis = (g, p, q) => {
+    const v = num(q);
+    return v === null ? p : p + gain * (v - g);
+  };
+  return { x: axis(grab.x, pos.x, point?.x), y: axis(grab.y, pos.y, point?.y) };
+}

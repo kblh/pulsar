@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { snap, toFraction, fromFraction, envLayout, nodePositions, envFromDrag, nearestNode, valueChars, formatCents, splitRoot, joinRoot } from '../js/hud.js';
+import { snap, toFraction, fromFraction, envLayout, nodePositions, envFromDrag, nearestNode, valueChars, formatCents, splitRoot, joinRoot, fractionFromX, keyValue, createGesture, dampedPoint } from '../js/hud.js';
 import { ROOTS } from '../js/options.js';
 
 const unit = { min: 0, max: 1, step: 0.05 };
@@ -163,4 +163,90 @@ test('formatCents shows a signed whole number of cents', () => {
   assert.equal(formatCents(-50), '\u221250 ct');
   assert.equal(formatCents(12.4), '+12 ct');
   assert.equal(formatCents(-0.2), '0 ct');
+});
+
+test('fractionFromX maps a pointer to 0..1 and clamps outside the track', () => {
+  const r = { left: 100, width: 200 };
+  assert.equal(fractionFromX(100, r), 0);
+  assert.equal(fractionFromX(200, r), 0.5);
+  assert.equal(fractionFromX(300, r), 1);
+  assert.equal(fractionFromX(50, r), 0);
+  assert.equal(fractionFromX(999, r), 1);
+});
+
+test('fractionFromX survives a hidden or unusable track', () => {
+  assert.equal(fractionFromX(150, { left: 100, width: 0 }), 0);
+  assert.equal(fractionFromX(150, { left: 100, width: -5 }), 0);
+  assert.equal(fractionFromX(NaN, { left: 100, width: 200 }), 0);
+  assert.equal(fractionFromX(150, undefined), 0);
+});
+
+test('keyValue moves a linear slider by one step, ten with the page keys, and to the ends', () => {
+  const o = { min: 0, max: 1, step: 0.05 };
+  assert.equal(keyValue('ArrowRight', 0.5, o), 0.55);
+  assert.equal(keyValue('ArrowDown', 0.5, o), 0.45);
+  assert.equal(keyValue('PageUp', 0.5, o), 1);
+  assert.equal(keyValue('PageDown', 0.5, o), 0);
+  assert.equal(keyValue('Home', 0.5, o), 0);
+  assert.equal(keyValue('End', 0.5, o), 1);
+  assert.equal(keyValue('a', 0.5, o), null);
+});
+
+test('keyValue moves a log slider by 5 % of the value but never less than a step', () => {
+  const o = { min: 20, max: 300, step: 1, scale: 'log' };
+  assert.equal(keyValue('ArrowRight', 200, o), 210);
+  assert.equal(keyValue('ArrowRight', 20, o), 21);
+  assert.equal(keyValue('ArrowRight', 300, o), 300);
+});
+
+test('touch gesture: a short press and release is a tap that applies once on release', () => {
+  const g = createGesture({ pointerType: 'touch' });
+  assert.equal(g.down(100), false);
+  assert.equal(g.move(104), false);
+  assert.equal(g.up(104), true);
+  assert.equal(g.up(104), false);
+});
+
+test('touch gesture: moving past the slop starts a drag that follows the finger', () => {
+  const g = createGesture({ pointerType: 'touch' });
+  assert.equal(g.down(100), false);
+  assert.equal(g.move(109), true);
+  assert.equal(g.move(150), true);
+  assert.equal(g.up(150), false);
+});
+
+test('touch gesture: cancel after down applies nothing', () => {
+  const g = createGesture({ pointerType: 'touch' });
+  g.down(100);
+  g.cancel();
+  assert.equal(g.move(200), false);
+  assert.equal(g.up(200), false);
+  assert.equal(g.active, false);
+});
+
+test('mouse gesture applies on press, follows the move, and does nothing on release', () => {
+  const g = createGesture({ pointerType: 'mouse' });
+  assert.equal(g.down(10), true);
+  assert.equal(g.move(40), true);
+  assert.equal(g.up(40), false);
+});
+
+test('a gesture ignores events before down and unusable x', () => {
+  const g = createGesture({ pointerType: 'touch' });
+  assert.equal(g.move(5), false);
+  assert.equal(g.up(5), false);
+  g.down(10);
+  assert.equal(g.move(NaN), false);
+});
+
+test('dampedPoint scales the pointer movement and leaves the axis alone for unusable input', () => {
+  const grab = { x: 100, y: 50 };
+  const pos = { x: 200, y: 80 };
+  const p = dampedPoint(grab, pos, { x: 150, y: 50 }, 0.4);
+  near(p.x, 220, 1e-9);
+  near(p.y, 80, 1e-9);
+  const q = dampedPoint(grab, pos, { x: NaN, y: 70 }, 0.4);
+  near(q.x, 200, 1e-9);
+  near(q.y, 88, 1e-9);
+  assert.deepEqual(dampedPoint(grab, pos, grab, 0.4), pos);
 });
