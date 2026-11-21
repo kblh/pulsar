@@ -17,6 +17,19 @@ const MIX_RAMP = 0.05; // seconds: moving mix or detune on a sounding voice neve
 
 const finite = (v) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(Number(v));
 
+/**
+ * Square and saw sound louder than sine at the same peak (more harmonics in the range the ear is most sensitive to),
+ * so each wave is scaled down to match; sine keeps its level and nothing ever gets louder than it was.
+ * A-weighted energy of C4 at equal gain, relative to sine: triangle -1.5 dB, saw +1.2 dB, square +4.7 dB. These gains sit
+ * a little below that match (-0.9, -2.5, -6 dB) because bright waves count for more at louder levels. Tune by ear here.
+ */
+export const WAVE_GAIN = { sine: 1, triangle: 0.9, sawtooth: 0.75, square: 0.5 };
+
+/** The level factor of a wave; an unknown wave is left alone. */
+export function waveGain(wave) {
+  return typeof wave === 'string' && Object.hasOwn(WAVE_GAIN, wave) ? WAVE_GAIN[wave] : 1;
+}
+
 /** The levels of oscillator A and B for a mix of 0..1: a linear crossfade that adds up to 1. */
 export function oscMix(mix) {
   const m = finite(mix) ? Math.min(1, Math.max(0, Number(mix))) : 0;
@@ -40,9 +53,11 @@ export function playNote(ctx, dest, { freq, time, duration, wave, env = DEFAULT_
   osc.frequency.value = freq;
   const end = time + Math.max(duration, a + d);
   gain.gain.setValueAtTime(0.0001, time);
-  gain.gain.linearRampToValueAtTime(0.6, time + a);
-  gain.gain.linearRampToValueAtTime(Math.max(0.0001, 0.6 * s), time + a + d);
-  gain.gain.setValueAtTime(Math.max(0.0001, 0.6 * s), end);
+  const two = oscMix(mix).b > 0;
+  const peak = two ? 0.6 : 0.6 * waveGain(wave); // with two oscillators each carries its own wave's gain in its level
+  gain.gain.linearRampToValueAtTime(peak, time + a);
+  gain.gain.linearRampToValueAtTime(Math.max(0.0001, peak * s), time + a + d);
+  gain.gain.setValueAtTime(Math.max(0.0001, peak * s), end);
   gain.gain.linearRampToValueAtTime(0.0001, end + r);
   const { a: levelA, b: levelB } = oscMix(mix);
   if (levelB <= 0) {
@@ -58,9 +73,9 @@ export function playNote(ctx, dest, { freq, time, duration, wave, env = DEFAULT_
   oscB.frequency.value = freq;
   oscB.detune.value = detuneOf(detune);
   const gainA = ctx.createGain();
-  gainA.gain.value = levelA;
+  gainA.gain.value = levelA * waveGain(wave);
   const gainB = ctx.createGain();
-  gainB.gain.value = levelB;
+  gainB.gain.value = levelB * waveGain(oscB.type);
   osc.connect(gainA).connect(gain);
   oscB.connect(gainB).connect(gain);
   gain.connect(dest);
@@ -136,6 +151,8 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix
   let gainB = null;
   let targetB = 0; // where B's level is heading: a wave change is silent only while B is muted
   let released = false;
+  const own = waveGain(wave); // the voice as a whole is scaled by A's wave; B is scaled by how it differs from A
+  const bScale = () => waveGain(oscB?.type) / own;
 
   function makeSecond(start, w2, dt, level) {
     oscB = ctx.createOscillator();
@@ -143,7 +160,7 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix
     oscB.frequency.value = freq;
     oscB.detune.value = detuneOf(dt);
     gainB = ctx.createGain();
-    gainB.gain.value = level;
+    gainB.gain.value = level * bScale();
     targetB = level;
     oscB.connect(gainB).connect(gain);
     oscB.start(start);
@@ -159,7 +176,7 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix
     osc.connect(gain);
   }
   gain.connect(dest);
-  gain.gain.setTargetAtTime(peak, t, fade / 4);
+  gain.gain.setTargetAtTime(peak * own, t, fade / 4);
   osc.start(t);
   if (first.b > 0) makeSecond(t, wave2, detune, first.b);
 
@@ -178,7 +195,7 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix
   };
   return {
     setPeak(p) {
-      gain.gain.setTargetAtTime(p, ctx.currentTime, fade / 4);
+      gain.gain.setTargetAtTime(p * own, ctx.currentTime, fade / 4);
     },
     /** Moves the balance and detune of a voice (also one that is fading out); a sounding voice built without a second oscillator gets one. */
     setMix({ mix: m, detune: dt, wave2: w2 }) {
@@ -197,7 +214,7 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix
       targetB = b;
       if (levelA) levelA.gain.setTargetAtTime(a, now, MIX_RAMP);
       else trim.gain.setTargetAtTime(0 - b, now, MIX_RAMP); // A * (1 + -b) = A * a, exactly
-      gainB.gain.setTargetAtTime(b, now, MIX_RAMP);
+      gainB.gain.setTargetAtTime(b * bScale(), now, MIX_RAMP);
       oscB.detune.setTargetAtTime(detuneOf(dt), now, MIX_RAMP);
     },
     /** Stops immediately; only for voices that are already silent. */
