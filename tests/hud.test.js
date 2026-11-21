@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { snap, toFraction, fromFraction, envLayout, nodePositions, envFromDrag, nearestNode, valueChars, formatCents, splitRoot, joinRoot, fractionFromX, keyValue, createGesture, dampedPoint } from '../js/hud.js';
+import { snap, toFraction, fromFraction, envLayout, nodePositions, envFromDrag, nearestNode, valueChars, formatCents, splitRoot, joinRoot, fractionFromX, keyValue, createGesture, dampedPoint, ENV_DRAG_GAIN } from '../js/hud.js';
 import { ROOTS } from '../js/options.js';
 
 const unit = { min: 0, max: 1, step: 0.05 };
@@ -250,3 +250,17 @@ test('dampedPoint scales the pointer movement and leaves the axis alone for unus
   near(q.y, 88, 1e-9);
   assert.deepEqual(dampedPoint(grab, pos, grab, 0.4), pos);
 });
+
+test('damped drag reaches both ends of a segment and stays inside it, and moves less than a direct drag', () => {
+  const L = envLayout({ w: 320, h: 120, pad: 16 });
+  const env = { a: 2, d: 1, s: 0.5, r: 1 };
+  const pos = nodePositions(env, L).attack;
+  const to = (dx) => envFromDrag('attack', dampedPoint(pos, pos, { x: pos.x + dx, y: pos.y }, ENV_DRAG_GAIN), env, L);
+  assert.deepEqual(to(L.seg / ENV_DRAG_GAIN + 50), { a: 5 });
+  assert.deepEqual(to(-L.seg / ENV_DRAG_GAIN - 50), { a: 0 });
+  const direct = envFromDrag('attack', { x: pos.x + 5, y: pos.y }, env, L).a - env.a;
+  const damped = to(5).a - env.a;
+  assert.ok(damped > 0 && damped < direct, `${damped} vs ${direct}`);
+  assert.deepEqual(to(0), { a: round2ish(env.a) });
+});
+function round2ish(v) { return Math.round(v * 100) / 100; }

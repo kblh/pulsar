@@ -1,4 +1,4 @@
-import { envLayout, nodePositions, envFromDrag, nearestNode } from './hud.js';
+import { envLayout, nodePositions, envFromDrag, nearestNode, dampedPoint } from './hud.js';
 
 const W = 320;
 const H = 120;
@@ -78,13 +78,13 @@ export function createEnvelopeEditor({ env, onChange }) {
   }
 
   // One handler on the svg picks the nearest node, so hit areas are not clipped by the svg box and
-  // overlapping nodes never hide each other. The grab offset keeps a node from jumping to the pointer.
+  // overlapping nodes never hide each other. A node moves only a fraction of the pointer movement (dampedPoint), so it never jumps.
   const toGraph = (e) => {
     const r = root.getBoundingClientRect();
     return { x: ((e.clientX - r.left) * W) / r.width, y: ((e.clientY - r.top) * H) / r.height };
   };
   const nodeAt = (pt) => nearestNode(pt, nodePositions(cur, L), HIT_R);
-  let drag = null; // { id, pointerId, dx, dy }
+  let drag = null; // { id, pointerId, grab, pos }: where the pointer and the node were at the press
 
   root.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || e.isPrimary === false) return;
@@ -92,7 +92,7 @@ export function createEnvelopeEditor({ env, onChange }) {
     const id = nodeAt(pt);
     if (!id) return;
     const p = nodePositions(cur, L)[id];
-    drag = { id, pointerId: e.pointerId, dx: pt.x - p.x, dy: pt.y - p.y };
+    drag = { id, pointerId: e.pointerId, grab: pt, pos: p };
     try { root.setPointerCapture(e.pointerId); } catch { /* not an active pointer (synthetic event) */ }
     e.preventDefault();
     nodeEls[NODES.findIndex((n) => n.id === id)].focus();
@@ -100,7 +100,7 @@ export function createEnvelopeEditor({ env, onChange }) {
   root.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
     const pt = toGraph(e);
-    onChange?.(envFromDrag(drag.id, { x: pt.x - drag.dx, y: pt.y - drag.dy }, cur, L));
+    onChange?.(envFromDrag(drag.id, dampedPoint(drag.grab, drag.pos, pt), cur, L));
   });
   const stop = (e) => {
     if (drag && e.pointerId === drag.pointerId) drag = null;
