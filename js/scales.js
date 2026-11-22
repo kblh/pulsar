@@ -23,16 +23,33 @@ export function parseNote(name) {
   return (Number(m[3]) + 1) * 12 + semis;
 }
 
+export const PITCH_CLASS_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+/** A note name without an octave ('C', 'F#', 'Bb') as 0-11, or null. */
+export function parsePitchClass(name) {
+  const m = /^([A-Ga-g])([#b]?)$/.exec(String(name).trim());
+  if (!m) return null;
+  return (NOTE_BASE[m[1].toUpperCase()] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + 12) % 12;
+}
+
 export function midiToFreq(m) {
   return 440 * Math.pow(2, (m - 69) / 12);
 }
 
 export function buildPitchPool(cfg) {
   if (cfg && cfg.mode === 'notes') {
-    const pool = String(cfg.notes ?? '')
-      .split(/[\s,]+/)
-      .map(parseNote)
-      .filter((n) => n !== null);
+    const octaves = Math.min(4, Math.max(1, Math.floor(cfg.octaves) || 2));
+    const base = ((cfg.baseOctave ?? 3) + 1) * 12;
+    const pool = [];
+    for (const token of String(cfg.notes ?? '').split(/[\s,]+/)) {
+      const note = parseNote(token);
+      if (note !== null) {
+        pool.push(note);
+        continue;
+      }
+      const pc = parsePitchClass(token);
+      if (pc !== null) for (let o = 0; o < octaves; o++) pool.push(base + pc + 12 * o); // a class token: every octave
+    }
     if (pool.length) return [...new Set(pool)].sort((a, b) => a - b);
     return buildPitchPool(DEFAULT_CFG);
   }
@@ -44,4 +61,18 @@ export function buildPitchPool(cfg) {
   const pool = [];
   for (let o = 0; o < octaves; o++) for (const i of intervals) pool.push(base + 12 * o + i);
   return pool;
+}
+
+/** The pitch classes (0-11) in the pool, ascending. */
+export function pitchClasses(cfg) {
+  return [...new Set(buildPitchPool(cfg).map((n) => n % 12))].sort((a, b) => a - b);
+}
+
+/** `cfg` with pitch class `pc` switched on or off, as a `notes` config. The last class stays on (returns `cfg` itself). */
+export function toggleClass(cfg, pc) {
+  const set = new Set(pitchClasses(cfg));
+  if (set.has(pc)) set.delete(pc);
+  else set.add(pc);
+  if (!set.size) return cfg;
+  return { ...cfg, mode: 'notes', notes: [...set].sort((a, b) => a - b).map((c) => PITCH_CLASS_NAMES[c]).join(' ') };
 }
