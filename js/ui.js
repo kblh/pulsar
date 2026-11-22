@@ -1,4 +1,7 @@
-import { SCALES } from './scales.js';
+import { SCALES, pitchClasses, toggleClass } from './scales.js';
+import { flipStep, formatPattern } from './rhythm.js';
+import { createStepGrid } from './step-grid.js';
+import { createKeyboard } from './keyboard.js';
 import { WAVES, ROOTS } from './options.js';
 import { cleanName, NAME_MAX, serializeModule, addModuleFromData, MAX_MODULES } from './scene.js';
 import { mountScenes, defaultDownload } from './scenes-ui.js';
@@ -9,7 +12,7 @@ import { DEFAULT_TEMPO, TEMPO_MIN, TEMPO_MAX } from './timing.js';
 import { MAX_FILE_BYTES } from './scene-file.js';
 import { moduleFilename, moduleToFile, parseModuleFile } from './module-file.js';
 import { createCard } from './card.js';
-import { iconButton, setIcon } from './icons.js';
+import { iconButton, setIcon, icon } from './icons.js';
 import { createSlider, createSegmented } from './controls.js';
 import { createEnvelopeEditor } from './envelope.js';
 import { splitRoot, joinRoot, formatCents } from './hud.js';
@@ -79,7 +82,7 @@ function gridRow(name, getPattern, getPitches) {
   };
 }
 
-function pitchRows(m) {
+function pitchRows(m, { withNotes }) {
   const cfg = () => ({ ...m.params.pitchConfig });
   const setCfg = (k) => (v) => m.setParam('pitchConfig', { ...cfg(), notes: cfg().notes ?? 'C4 E4 G4 A4', [k]: k === 'octaves' ? Number(v) : v });
   const c = m.params.pitchConfig;
@@ -90,16 +93,40 @@ function pitchRows(m) {
       octaves.set(m.params.pitchConfig.octaves ?? 2);
     },
   });
-  return [
-    row('pitch', seg(['scale', 'notes'], c.mode, 'pitch mode', setCfg('mode'))),
+  const mode = createSegmented({ options: ['scale', 'notes'], value: c.mode, ariaLabel: 'pitch mode', onChange: setCfg('mode') });
+  const rows = [
+    row('pitch', mode.node),
     row('root', select(ROOTS, c.root ?? 'C', setCfg('root')), select(Object.keys(SCALES), c.scale ?? 'pentatonicMinor', setCfg('scale'))),
     row('octaves', octaves.node),
-    row('notes', text(c.notes ?? 'C4 E4 G4 A4', setCfg('notes'))),
+    ...(withNotes ? [row('notes', text(c.notes ?? 'C4 E4 G4 A4', setCfg('notes')))] : []),
   ];
+  rows.syncMode = () => mode.set(m.params.pitchConfig.mode); // the keyboard can switch the mode
+  return rows;
 }
 
-function melodicControls(m) {
+function melodicControls(m, live) {
+  const pitch = pitchRows(m, { withNotes: false });
   const set = (k) => (v) => m.setParam(k, v);
+  const keyboard = createKeyboard({
+    onToggle: (pc) => {
+      m.setParam('pitchConfig', toggleClass(m.params.pitchConfig, pc));
+      paint();
+    },
+  });
+  const rhythmGrid = createStepGrid({
+    ariaLabel: 'rhythm steps',
+    onToggle: (i) => {
+      m.setParam('rhythm', formatPattern(flipStep(m.state.rhythm.current, i)));
+      paint();
+    },
+  });
+  const paint = () => {
+    pitch.syncMode();
+    keyboard.set(pitchClasses(m.params.pitchConfig));
+    rhythmGrid.set(m.state.rhythm.current);
+  };
+  paint();
+  live.push({ update: (playhead) => { paint(); rhythmGrid.setPlayhead(playhead); } });
   const envelope = createEnvelopeEditor({
     env: m.params.env,
     onChange: (partial) => {
@@ -115,8 +142,9 @@ function melodicControls(m) {
     row('envelope', envelope.node),
     paramSlider('bpm', m, 'bpm', { min: 20, max: 300, step: 1 }),
     paramSlider('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct }),
-    ...pitchRows(m),
-    row('rhythm', text(m.params.rhythm, set('rhythm'))),
+    ...pitch,
+    row('keys', keyboard.node),
+    row('rhythm', rhythmGrid.node),
     paramSlider('randomize', m, 'randomize', { min: 1, max: 10, step: 1 }),
     paramSlider('rhythm mod', m, 'rhythmMod', { min: 1, max: 10, step: 1 }),
     row('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution'))),
@@ -238,7 +266,7 @@ function droneControls(m) {
     paramSlider('mix', m, 'mix', { min: 0, max: 1, step: 0.05, format: pct }),
     paramSlider('detune', m, 'detune', { min: -50, max: 50, step: 1, format: formatCents }),
     rootPicker(m),
-    ...pitchRows(m),
+    ...pitchRows(m, { withNotes: true }),
     paramSlider('max extra', m, 'maxExtra', { min: 0, max: 6, step: 1 }),
     paramSlider('rate', m, 'rate', { min: 1, max: 10, step: 1 }),
     paramSlider('fade s', m, 'fade', { min: 0.5, max: 30, step: 0.5, format: (v) => `${v} s` }),
@@ -252,14 +280,46 @@ function statusRow(name, getText) {
   return { node: line, update: () => { value.textContent = getText(); } };
 }
 
-function rhythmicControls(m) {
+function rhythmicControls(m, live) {
   const set = (k) => (v) => m.setParam(k, v);
+  const DRUMS = ['kick', 'snare', 'hat'];
+  let lane = 'kick';
+  const grid = createStepGrid({
+    ariaLabel: 'steps',
+    onToggle: (i) => {
+      m.setParam(`voice:${lane}`, formatPattern(flipStep(m.state.voices[lane].current, i)));
+      paint();
+    },
+  });
+  const paint = () => grid.set(m.state.voices[lane].current);
+  const laneSeg = seg(DRUMS, lane, 'lane', (v) => {
+    lane = v;
+    paint();
+  });
+  const muteButtons = DRUMS.map((d) => {
+    const b = el('button', { type: 'button', className: 'mute-btn' });
+    const show = () => {
+      const muted = m.params.mute[d];
+      b.setAttribute('aria-pressed', String(muted));
+      b.title = `${muted ? 'unmute' : 'mute'} ${d}`;
+      b.setAttribute('aria-label', b.title);
+      b.replaceChildren(icon(muted ? 'mute' : 'sound'), el('span', { textContent: d }));
+    };
+    b.onclick = () => {
+      m.setParam(`mute:${d}`, !m.params.mute[d]);
+      show();
+    };
+    show();
+    return b;
+  });
+  paint();
+  live.push({ update: (playhead) => { paint(); grid.setPlayhead(playhead); } });
   return [
     paramSlider('bpm', m, 'bpm', { min: 20, max: 300, step: 1 }),
     paramSlider('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct }),
-    row('kick', text(m.params.voices.kick, set('voice:kick'))),
-    row('snare', text(m.params.voices.snare, set('voice:snare'))),
-    row('hat', text(m.params.voices.hat, set('voice:hat'))),
+    row('lane', laneSeg),
+    row('mute', el('div', { className: 'mute-row' }, ...muteButtons)),
+    row('steps', grid.node),
     paramSlider('rhythm mod', m, 'rhythmMod', { min: 1, max: 10, step: 1 }),
     row('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution'))),
   ];
@@ -357,18 +417,16 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
         ),
       ];
     } else if (m.type === 'melodic') {
-      rows = [
-        gridRow('rhythm', () => m.state.rhythm.current),
-        gridRow('pitch', () => m.state.rhythm.current, () => m.state.melody.current),
-      ];
+      rows = [gridRow('pitch', () => m.state.rhythm.current, () => m.state.melody.current)];
     } else {
-      rows = ['kick', 'snare', 'hat'].map((d) => gridRow(d, () => m.state.voices[d].current));
+      rows = [];
     }
+    const live = []; // updaters of the interactive controls (step grids, keyboard)
     const grid = el('div', { className: 'grid' }, ...rows.map((r) => r.node));
     const sends = [0, 1, 2].map((slot) => sendRow(engine, m, slot));
     sendFills.set(m.id, sends.map((x) => x.fill));
     const controls = [
-      ...{ melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls }[m.type](m),
+      ...{ melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls }[m.type](m, live),
       ...mixRows(engine, m),
       ...sends.map((x) => x.row),
     ];
@@ -379,11 +437,11 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
       lead: [toggle],
       quick: [volume.node],
       actions: [exportBtn, remove],
-      body: [...controls, grid],
+      body: rows.length ? [...controls, grid] : controls,
       detail,
     });
     modulesEl.append(card.node);
-    panels.set(m.id, { card, rows, module: m, toggle });
+    panels.set(m.id, { card, rows: [...rows, ...live], module: m, toggle });
   }
 
   async function add(factory) {
