@@ -438,8 +438,8 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     ];
     const card = createCard({
       kind: 'module',
-      title: `#${m.id} ${m.name}`,
-      nameEditor: el('span', {}, `#${m.id} `, nameEditor(m)),
+      title: `${m.name}`,
+      nameEditor: nameEditor(m),
       lead: [toggle],
       quick: [volume.node],
       actions: [exportBtn, remove],
@@ -667,7 +667,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
       controls.classList.toggle('bypassed', !fx.enabled);
     }
     for (const { card, rows, module, toggle } of panels.values()) {
-      card.setTitle(`#${module.id} ${module.name}`);
+      card.setTitle(`${module.name}`);
       const state = module.running ? 'running' : 'stopped';
       if (toggle.dataset.state !== state) {
         toggle.dataset.state = state;

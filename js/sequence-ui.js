@@ -79,7 +79,7 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
         },
       });
       const chips = engine.modules.map((m) => {
-        const chip = el('button', { type: 'button', className: 'chip', textContent: `#${m.id} ${m.name}` });
+        const chip = el('button', { type: 'button', className: 'chip', textContent: `${m.name}` });
         chip.dataset.id = String(m.id);
         chip.setAttribute('aria-pressed', String(part.modules.includes(m.id)));
         chip.onclick = () => {
@@ -141,7 +141,7 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
       for (const p of partEls) {
         for (const chip of p.chips) {
           const m = engine.modules.find((x) => x.id === Number(chip.dataset.id));
-          const label = m ? `#${m.id} ${m.name}` : chip.textContent;
+          const label = m ? `${m.name}` : chip.textContent;
           if (chip.textContent !== label) chip.textContent = label;
         }
       }

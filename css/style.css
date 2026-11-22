@@ -112,7 +112,7 @@ button:hover, button:focus-visible { color: var(--accent); text-shadow: 0 0 8px 
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 4px 0; min-height: 28px; }
 .row label { color: var(--dim); flex: 0 0 auto; width: 11ch; }
 input, select {
-  font: inherit; color: var(--fg); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line);
+  font: inherit; font-size: 16px; /* under 16px iOS Safari zooms the page on focus */ color: var(--fg); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line);
   padding: 1px 4px; border-radius: 3px; min-width: 0; max-width: 100%;
 }
 select { min-height: 44px; padding: 0 8px; max-width: 100%; }
