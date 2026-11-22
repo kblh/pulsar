@@ -127,6 +127,9 @@ function cleanModuleParams(type, p) {
     for (const d of ['kick', 'snare', 'hat']) if (typeof p.voices[d] === 'string') voices[d] = p.voices[d].slice(0, MAX_PATTERN);
     if (Object.keys(voices).length) out.voices = voices;
   }
+  if (type === 'rhythmic' && isObj(p.mute)) {
+    out.mute = Object.fromEntries(['kick', 'snare', 'hat'].map((d) => [d, p.mute[d] === true]));
+  }
   if (type === 'drone' && typeof p.rootNote === 'string') out.rootNote = p.rootNote.slice(0, 8);
   return out;
 }
@@ -215,6 +218,8 @@ function applyParams(m, params) {
   for (const [key, value] of Object.entries(params)) {
     if (m.type === 'rhythmic' && key === 'voices') {
       for (const [drum, pattern] of Object.entries(value)) m.setParam(`voice:${drum}`, pattern);
+    } else if (m.type === 'rhythmic' && key === 'mute') {
+      for (const [drum, on] of Object.entries(value)) m.setParam(`mute:${drum}`, on);
     } else {
       m.setParam(key, value);
     }

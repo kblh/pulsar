@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePattern, formatPattern, mutateRhythm, RHYTHM_PRESETS } from '../js/rhythm.js';
+import { parsePattern, formatPattern, mutateRhythm, flipStep, RHYTHM_PRESETS } from '../js/rhythm.js';
 import { mulberry32 } from '../js/rng.js';
 
 test('parsePattern always has 16 steps', () => {
@@ -68,4 +68,37 @@ test('walk actually changes the pattern', () => {
   const rng = mulberry32(4);
   for (let i = 0; i < 20; i++) s = mutateRhythm(s, { level: 10, mode: 'walk' }, rng);
   assert.notDeepEqual(s.current, p);
+});
+
+test('parsePattern keeps an empty pattern empty only when allowed', () => {
+  assert.equal(parsePattern('................').some(Boolean), true);
+  assert.equal(parsePattern('................', { allowEmpty: true }).some(Boolean), false);
+  assert.equal(parsePattern('', { allowEmpty: true }).length, 16);
+});
+
+test('flipStep inverts one step on a copy', () => {
+  const p = parsePattern('x...............');
+  const q = flipStep(p, 3);
+  assert.equal(q[3], true);
+  assert.equal(p[3], false);
+  assert.deepEqual(flipStep(p, 16), p);
+  assert.deepEqual(flipStep(p, -1), p);
+  assert.notEqual(flipStep(p, 16), p);
+});
+
+test('mutateRhythm leaves a pattern that started empty empty', () => {
+  const empty = { current: parsePattern('', { allowEmpty: true }), base: parsePattern('', { allowEmpty: true }) };
+  for (const mode of ['drift', 'walk']) {
+    let s = empty;
+    for (let i = 0; i < 50; i++) s = mutateRhythm(s, { level: 10, mode }, Math.random);
+    assert.equal(s.current.some(Boolean), false, mode);
+  }
+});
+
+test('mutateRhythm still never empties a pattern that has hits', () => {
+  let s = { current: parsePattern('x...............'), base: parsePattern('x...............') };
+  for (let i = 0; i < 200; i++) {
+    s = mutateRhythm(s, { level: 10, mode: 'walk' }, Math.random);
+    assert.equal(s.current.some(Boolean), true);
+  }
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanName, serializeScene, validateScene } from '../js/scene.js';
+import { cleanName, serializeScene, validateScene, serializeModule, cleanModule } from '../js/scene.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from '../js/module.js';
 import { createSequence } from '../js/sequence.js';
 
@@ -344,4 +344,20 @@ test('validateScene cleans the tempo and leaves it out when there is none', () =
   assert.ok(!('tempo' in v('x')));
   assert.ok(!('tempo' in v(null)));
   assert.ok(!('tempo' in v()));
+});
+
+test('a rhythmic module saves and cleans mute and an emptied lane', () => {
+  const m = createRhythmicModule({ voices: { snare: '................' }, mute: { hat: true } });
+  const data = serializeModule(m);
+  assert.deepEqual(data.params.mute, { kick: false, snare: false, hat: true });
+  const cleaned = cleanModule(JSON.parse(JSON.stringify(data)));
+  assert.deepEqual(cleaned.params.mute, { kick: false, snare: false, hat: true });
+  assert.equal(cleaned.params.voices.snare, '................');
+});
+
+test('mute from untrusted data: only true counts, missing means none', () => {
+  const base = { type: 'rhythmic', name: 'r', params: {}, volume: 1, pan: 0, running: true, sends: [] };
+  assert.equal(cleanModule(base).params.mute, undefined);
+  assert.deepEqual(cleanModule({ ...base, params: { mute: { kick: 'true', snare: 1, hat: true } } }).params.mute, { kick: false, snare: false, hat: true });
+  assert.equal(cleanModule({ ...base, params: { mute: [true] } }).params.mute, undefined);
 });

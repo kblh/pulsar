@@ -11,10 +11,18 @@ export const RHYTHM_PRESETS = {
 const SHIFT_CHANCE = 0.5;
 const DENSITY_BAND = 1;
 
-export function parsePattern(str) {
+/** A pattern from text. An empty one gets step 0 on, unless `allowEmpty` (a lane the user cleared on purpose). */
+export function parsePattern(str, { allowEmpty = false } = {}) {
   const p = Array.from({ length: STEPS_PER_BAR }, (_, i) => String(str ?? '')[i] === 'x');
-  if (!p.some(Boolean)) p[0] = true;
+  if (!allowEmpty && !p.some(Boolean)) p[0] = true;
   return p;
+}
+
+/** A copy of `pattern` with step `i` inverted; an `i` outside the pattern changes nothing. */
+export function flipStep(pattern, i) {
+  const next = [...pattern];
+  if (Number.isInteger(i) && i >= 0 && i < next.length) next[i] = !next[i];
+  return next;
 }
 
 export function formatPattern(p) {
@@ -57,6 +65,7 @@ function flipHit(p, anchor, rng) {
  */
 export function mutateRhythm({ current, base, anchor }, { level, mode }, rng) {
   const anchored = anchor ?? hitCount(base);
+  if (anchored === 0) return { current: [...current], base: [...base], anchor: 0 }; // cleared by the user: stays empty
   const next = [...current];
   for (let n = mutationAmount(level); n > 0; n--) {
     if (rng() < SHIFT_CHANCE) shiftHit(next, rng);

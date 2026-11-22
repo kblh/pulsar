@@ -204,3 +204,41 @@ test('note length follows the effective tempo too', () => {
   const len = (r) => r.osc[0].stops[0] - r.osc[0].starts[0];
   assert.ok(len(noteTimes({ on: true, bpm: 240 })) < len(noteTimes(undefined)));
 });
+
+test('rhythmic mute: defaults, setParam, junk values and unknown drums', () => {
+  const m = createRhythmicModule();
+  assert.deepEqual(m.params.mute, { kick: false, snare: false, hat: false });
+  m.setParam('mute:kick', true);
+  assert.equal(m.params.mute.kick, true);
+  m.setParam('mute:kick', 'true');
+  assert.equal(m.params.mute.kick, false);
+  m.setParam('mute:tom', true);
+  assert.equal('tom' in m.params.mute, false);
+  assert.deepEqual(createRhythmicModule({ mute: { hat: true, kick: 1, snare: 'yes' } }).params.mute, { kick: false, snare: false, hat: true });
+  assert.deepEqual(createRhythmicModule({ mute: 'x' }).params.mute, { kick: false, snare: false, hat: false });
+});
+
+test('a muted drum makes no sound', () => {
+  const play = (mute) => {
+    const { ctx, created } = stubCtx();
+    const m = createRhythmicModule({ bpm: 240, voices: { kick: 'xxxxxxxxxxxxxxxx', snare: '................', hat: '................' }, mute });
+    run(m, ctx, 2);
+    return created.length;
+  };
+  assert.ok(play({}) > 0);
+  assert.equal(play({ kick: true }), 0);
+});
+
+test('a rhythmic voice can be emptied and stays empty', () => {
+  const m = createRhythmicModule();
+  m.setParam('voice:snare', '................');
+  assert.equal(m.state.voices.snare.current.some(Boolean), false);
+  const e = createRhythmicModule({ voices: { hat: '................' } });
+  assert.equal(e.state.voices.hat.current.some(Boolean), false);
+});
+
+test('the melodic rhythm still keeps one hit', () => {
+  const m = createMelodicModule();
+  m.setParam('rhythm', '................');
+  assert.equal(m.state.rhythm.current.some(Boolean), true);
+});

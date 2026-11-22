@@ -12,6 +12,7 @@ let nextId = 1;
 const DRUMS = ['kick', 'snare', 'hat'];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const cleanMute = (raw) => Object.fromEntries(DRUMS.map((d) => [d, raw !== null && typeof raw === 'object' && raw[d] === true]));
 const evolved = (pattern) => ({ current: pattern, base: [...pattern] });
 
 const LIMITS = {
@@ -52,7 +53,10 @@ function applyParam(m, key, value) {
   } else if (key.startsWith('voice:')) {
     const v = key.slice(6);
     m.params.voices[v] = value;
-    m.state.voices[v] = evolved(parsePattern(value));
+    m.state.voices[v] = evolved(parsePattern(value, { allowEmpty: true }));
+  } else if (key.startsWith('mute:')) {
+    const v = key.slice(5);
+    if (DRUMS.includes(v)) m.params.mute[v] = value === true;
   } else if (key === 'rhythm') {
     m.params.rhythm = value;
     m.state.rhythm = evolved(parsePattern(value));
@@ -182,10 +186,11 @@ export function createRhythmicModule(overrides = {}) {
     evolution: 'drift',
     ...overrides,
     voices,
+    mute: cleanMute(overrides.mute),
   };
-  const state = { voices: Object.fromEntries(DRUMS.map((d) => [d, evolved(parsePattern(voices[d]))])) };
+  const state = { voices: Object.fromEntries(DRUMS.map((d) => [d, evolved(parsePattern(voices[d], { allowEmpty: true }))])) };
   const m = makeModule('rhythmic', params, state, [], (mod, ctx, dest, time, step) => {
-    for (const kind of DRUMS) if (mod.state.voices[kind].current[step]) playDrum(ctx, dest, { kind, time });
+    for (const kind of DRUMS) if (!mod.params.mute[kind] && mod.state.voices[kind].current[step]) playDrum(ctx, dest, { kind, time });
   });
   m.mutateBar = () => {
     const p = m.params;

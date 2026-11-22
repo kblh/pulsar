@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyScene, validateScene, serializeScene, addModuleFromData, cleanModule } from '../js/scene.js';
-import { createMelodicModule, createDroneModule } from '../js/module.js';
+import { applyScene, validateScene, serializeScene, addModuleFromData, cleanModule, serializeModule } from '../js/scene.js';
+import { createMelodicModule, createDroneModule, createRhythmicModule } from '../js/module.js';
 
 function fakeEngine({ stopped = false, failAddModule = [], failSetVolume = [], failAddEffect = [], failAddSequence = false } = {}) {
   const log = [];
@@ -266,4 +266,14 @@ test('applyScene sets the global tempo of the scene, or off/120 when it has none
   const e2 = fakeEngine();
   applyScene(e2, scene([mod('drone')]), fakeUi(e2));
   assert.deepEqual(e2.tempoCalls, [{ on: false, bpm: 120 }]);
+});
+
+test('applying a saved rhythmic module restores mute and the empty lane', () => {
+  const e = fakeEngine();
+  const data = cleanModule(JSON.parse(JSON.stringify(serializeModule(createRhythmicModule({ voices: { snare: '................' }, mute: { kick: true } })))));
+  addModuleFromData(e, { ...data, sends: [] });
+  const m = e.modules[0];
+  assert.equal(m.params.mute.kick, true);
+  assert.equal(m.params.mute.hat, false);
+  assert.equal(m.state.voices.snare.current.some(Boolean), false);
 });
