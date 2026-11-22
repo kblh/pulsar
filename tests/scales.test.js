@@ -58,24 +58,37 @@ test('pitchClasses of a scale and of legacy notes', () => {
   assert.deepEqual(pitchClasses({ mode: 'notes', notes: 'C4 E4 G4 A4' }), [0, 4, 7, 9]);
 });
 
-test('toggleClass seeds from the scale, switches to notes and flips the class', () => {
-  const cfg = { mode: 'scale', root: 'C', scale: 'pentatonicMinor', octaves: 2 };
-  const off = toggleClass(cfg, 3);
+test('toggleClass keeps every other pitch of the pool where it was', () => {
+  const cfg = { mode: 'scale', root: 'A', scale: 'pentatonicMinor', octaves: 2 };
+  const before = buildPitchPool(cfg);
+  const off = toggleClass(cfg, 9); // A off
   assert.equal(off.mode, 'notes');
-  assert.equal(off.octaves, 2);
-  assert.deepEqual(pitchClasses(off), [0, 5, 7, 10]);
-  assert.deepEqual(pitchClasses(toggleClass(off, 4)), [0, 4, 5, 7, 10]);
-  assert.equal(off.root, 'C');
+  assert.deepEqual(buildPitchPool(off), before.filter((n) => n % 12 !== 9));
+  const on = toggleClass(cfg, 11); // B on: only inside the old range, nothing moves down
+  assert.deepEqual(buildPitchPool(on), [57, 59, 60, 62, 64, 67, 69, 71, 72, 74, 76, 79]);
+  assert.equal(Math.min(...buildPitchPool(on)), Math.min(...before));
 });
 
-test('toggleClass never turns the last key off', () => {
-  const one = { mode: 'notes', notes: 'E', octaves: 2 };
+test('adding a key to legacy notes does not move the old notes', () => {
+  const cfg = { mode: 'notes', notes: 'C4 E4 G4 A4' };
+  const on = toggleClass(cfg, 2); // D
+  assert.deepEqual(buildPitchPool(on), [60, 62, 64, 67, 69]);
+  assert.deepEqual(pitchClasses(on), [0, 2, 4, 7, 9]);
+  assert.equal(on.root, undefined);
+});
+
+test('toggleClass removes a class from every octave and never the last key', () => {
+  const cfg = { mode: 'scale', root: 'C', scale: 'pentatonicMinor', octaves: 2 };
+  const off = toggleClass(cfg, 3);
+  assert.deepEqual(pitchClasses(off), [0, 5, 7, 10]);
+  assert.equal(off.octaves, 2);
+  const one = { mode: 'notes', notes: 'E4', octaves: 2 };
   assert.equal(toggleClass(one, 4), one);
   assert.deepEqual(pitchClasses(toggleClass(one, 0)), [0, 4]);
 });
 
 test('names written by toggleClass parse back', () => {
-  const cfg = toggleClass({ mode: 'notes', notes: 'C', octaves: 1 }, 3);
-  assert.equal(cfg.notes, 'C Eb');
+  const cfg = toggleClass({ mode: 'notes', notes: 'C4' }, 3);
+  assert.equal(cfg.notes, 'C4 Eb4');
   assert.deepEqual(pitchClasses(cfg), [0, 3]);
 });

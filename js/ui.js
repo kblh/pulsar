@@ -1,5 +1,5 @@
 import { SCALES, pitchClasses, toggleClass } from './scales.js';
-import { flipStep, formatPattern } from './rhythm.js';
+import { flipStep, formatPattern, isOnlyHit } from './rhythm.js';
 import { createStepGrid } from './step-grid.js';
 import { createKeyboard } from './keyboard.js';
 import { WAVES, ROOTS } from './options.js';
@@ -100,7 +100,11 @@ function pitchRows(m, { withNotes }) {
     row('octaves', octaves.node),
     ...(withNotes ? [row('notes', text(c.notes ?? 'C4 E4 G4 A4', setCfg('notes')))] : []),
   ];
-  rows.syncMode = () => mode.set(m.params.pitchConfig.mode); // the keyboard can switch the mode
+  let shown = c.mode;
+  rows.syncMode = () => { // the keyboard can switch the mode
+    const now = m.params.pitchConfig.mode;
+    if (now !== shown) mode.set((shown = now));
+  };
   return rows;
 }
 
@@ -116,6 +120,7 @@ function melodicControls(m, live) {
   const rhythmGrid = createStepGrid({
     ariaLabel: 'rhythm steps',
     onToggle: (i) => {
+      if (isOnlyHit(m.state.rhythm.current, i)) return; // a melody needs one hit
       m.setParam('rhythm', formatPattern(flipStep(m.state.rhythm.current, i)));
       paint();
     },
@@ -285,7 +290,7 @@ function rhythmicControls(m, live) {
   const DRUMS = ['kick', 'snare', 'hat'];
   let lane = 'kick';
   const grid = createStepGrid({
-    ariaLabel: 'steps',
+    ariaLabel: 'kick steps',
     onToggle: (i) => {
       m.setParam(`voice:${lane}`, formatPattern(flipStep(m.state.voices[lane].current, i)));
       paint();
@@ -294,6 +299,7 @@ function rhythmicControls(m, live) {
   const paint = () => grid.set(m.state.voices[lane].current);
   const laneSeg = seg(DRUMS, lane, 'lane', (v) => {
     lane = v;
+    grid.node.setAttribute('aria-label', `${lane} steps`);
     paint();
   });
   const muteButtons = DRUMS.map((d) => {
@@ -302,7 +308,7 @@ function rhythmicControls(m, live) {
       const muted = m.params.mute[d];
       b.setAttribute('aria-pressed', String(muted));
       b.title = `${muted ? 'unmute' : 'mute'} ${d}`;
-      b.setAttribute('aria-label', b.title);
+      b.setAttribute('aria-label', `mute ${d}`); // the state is aria-pressed
       b.replaceChildren(icon(muted ? 'mute' : 'sound'), el('span', { textContent: d }));
     };
     b.onclick = () => {

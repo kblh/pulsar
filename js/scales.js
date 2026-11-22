@@ -68,11 +68,25 @@ export function pitchClasses(cfg) {
   return [...new Set(buildPitchPool(cfg).map((n) => n % 12))].sort((a, b) => a - b);
 }
 
-/** `cfg` with pitch class `pc` switched on or off, as a `notes` config. The last class stays on (returns `cfg` itself). */
+const noteName = (midi) => `${PITCH_CLASS_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+
+/**
+ * `cfg` with pitch class `pc` switched on or off, as a `notes` config of exact pitches, so no other note of the melody moves.
+ * Off removes the class from every octave. On adds it inside the range of the current pool (the nearest one above the
+ * lowest note when none fits). The last class stays on (returns `cfg` itself).
+ */
 export function toggleClass(cfg, pc) {
-  const set = new Set(pitchClasses(cfg));
-  if (set.has(pc)) set.delete(pc);
-  else set.add(pc);
-  if (!set.size) return cfg;
-  return { ...cfg, mode: 'notes', notes: [...set].sort((a, b) => a - b).map((c) => PITCH_CLASS_NAMES[c]).join(' ') };
+  const pool = buildPitchPool(cfg);
+  let next;
+  if (pool.some((n) => n % 12 === pc)) {
+    next = pool.filter((n) => n % 12 !== pc);
+  } else {
+    const lo = Math.min(...pool);
+    const hi = Math.max(...pool);
+    const add = [];
+    for (let n = lo; n <= Math.max(hi, lo + 11); n++) if (n % 12 === pc && (n <= hi || !add.length)) add.push(n);
+    next = [...pool, ...add].sort((a, b) => a - b);
+  }
+  if (!next.length) return cfg;
+  return { ...cfg, mode: 'notes', notes: next.map(noteName).join(' ') };
 }

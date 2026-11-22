@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePattern, formatPattern, mutateRhythm, flipStep, RHYTHM_PRESETS } from '../js/rhythm.js';
+import { parsePattern, formatPattern, mutateRhythm, flipStep, isOnlyHit, RHYTHM_PRESETS } from '../js/rhythm.js';
 import { mulberry32 } from '../js/rng.js';
 
 test('parsePattern always has 16 steps', () => {
@@ -101,4 +101,12 @@ test('mutateRhythm still never empties a pattern that has hits', () => {
     s = mutateRhythm(s, { level: 10, mode: 'walk' }, Math.random);
     assert.equal(s.current.some(Boolean), true);
   }
+});
+
+test('isOnlyHit tells the one hit a melodic rhythm may not lose', () => {
+  const p = parsePattern('.....x..........');
+  assert.equal(isOnlyHit(p, 5), true);
+  assert.equal(isOnlyHit(p, 0), false);
+  assert.equal(isOnlyHit(parsePattern('x...x...'), 0), false);
+  assert.equal(isOnlyHit(parsePattern('................', { allowEmpty: true }), 0), false);
 });

@@ -18,6 +18,11 @@ export function parsePattern(str, { allowEmpty = false } = {}) {
   return p;
 }
 
+/** True when step `i` is the one and only hit of `pattern`. */
+export function isOnlyHit(pattern, i) {
+  return Boolean(pattern[i]) && pattern.filter(Boolean).length === 1;
+}
+
 /** A copy of `pattern` with step `i` inverted; an `i` outside the pattern changes nothing. */
 export function flipStep(pattern, i) {
   const next = [...pattern];
