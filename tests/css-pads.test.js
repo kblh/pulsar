@@ -19,3 +19,7 @@ test('pads, keys and mute buttons are touch sized', () => {
 test('black keys are at least 32 px wide', () => {
   assert.match(rule('.key.black'), /width:\s*max\(9%,\s*32px\)/);
 });
+
+test('the keyboard is its own stacking context so black keys stay under the sticky card header', () => {
+  assert.match(rule('.keys'), /isolation:\s*isolate/);
+});
