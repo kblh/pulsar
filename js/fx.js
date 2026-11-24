@@ -7,6 +7,7 @@ export const FX_DEFAULTS = {
   delay: { time: 350, feedback: 0.4, tone: 4000, return: 0.5, pingpong: 0 },
   reverb: { decay: 2.5, damping: 0.5, return: 0.5, width: 1 },
   eq: { low: 0, mid: 0, high: 0, midFreq: 1000, return: 0.5 },
+  distortion: { drive: 0.4, shape: 0.3, tone: 5000, return: 0.5 },
   bitcrusher: { bits: 8, rate: 4, return: 0.5 },
 };
 
@@ -14,6 +15,7 @@ export const FX_RANGES = {
   delay: { time: [10, 2000], feedback: [0, 0.9], tone: [200, 12000], return: [0, 1], pingpong: [0, 1] },
   reverb: { decay: [0.3, 10], damping: [0, 1], return: [0, 1], width: [0, 1] },
   eq: { low: [-12, 12], mid: [-12, 12], high: [-12, 12], midFreq: [200, 5000], return: [0, 1] },
+  distortion: { drive: [0, 1], shape: [0, 1], tone: [500, 12000], return: [0, 1] },
   bitcrusher: { bits: [1, 16], rate: [1, 32], return: [0, 1] },
 };
 
@@ -309,6 +311,98 @@ export function createEq(ctx, params) {
   };
 }
 
+const DIST_TAIL_MS = 100;
+const DIST_CURVE_POINTS = 2048;
+const DIST_MAX_DB = 36; // gain in front of the shaper at drive 1; a hotter signal only gets clamped by the curve ends
+
+const DIST_SLOPE = 2.5; // both curves rise this steeply around 0 and are flat from about 0.4 (soft: rounded, hard: a knee)
+const DIST_REF = 0.2; // a typical signal level in this app: the make-up gain keeps this level as loud as it came in
+
+/** The gain in front of the shaper: 1 (clean) at drive 0 up to +36 dB at drive 1. */
+export const distortionPreGain = (drive) => 10 ** ((drive * DIST_MAX_DB) / 20);
+/** Make-up gain after the shaper: a hotter drive saturates harder, so it needs less; a signal of `DIST_REF` stays as loud as it was. */
+export const distortionPostGain = (drive) =>
+  DIST_REF / (Math.tanh(DIST_SLOPE * Math.min(1, distortionPreGain(drive) * DIST_REF)) / Math.tanh(DIST_SLOPE));
+
+/** Transfer curves over -1..1 (the shaper clamps beyond): `soft` is a tanh (tube-like overdrive), `hard` clips flat (fuzz). */
+export function distortionCurve(kind) {
+  const curve = new Float32Array(DIST_CURVE_POINTS);
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = kind === 'hard' ? Math.max(-1, Math.min(1, x * DIST_SLOPE)) : Math.tanh(DIST_SLOPE * x) / Math.tanh(DIST_SLOPE);
+  }
+  return curve;
+}
+
+/**
+ * Overdrive to distortion: gain -> two waveshapers side by side, soft and hard, crossfaded by `shape` -> make-up gain
+ * -> tone lowpass -> return. A waveshaper's curve cannot be changed without a jump, hence two fixed curves and
+ * ramped gains: every parameter moves smoothly.
+ */
+export function createDistortion(ctx, params) {
+  const p = accept('distortion', params);
+  const input = ctx.createGain();
+  input.gain.value = 1;
+  const pre = ctx.createGain();
+  pre.gain.value = distortionPreGain(p.drive);
+  const shaper = (kind, level) => {
+    const w = ctx.createWaveShaper();
+    w.curve = distortionCurve(kind);
+    w.oversample = '2x'; // the clipped edges would alias into harsh noise
+    const g = ctx.createGain();
+    g.gain.value = level;
+    pre.connect(w);
+    w.connect(g);
+    return { w, g };
+  };
+  const soft = shaper('soft', 1 - p.shape);
+  const hard = shaper('hard', p.shape);
+  const post = ctx.createGain();
+  post.gain.value = distortionPostGain(p.drive);
+  const tone = ctx.createBiquadFilter();
+  tone.type = 'lowpass';
+  tone.frequency.value = p.tone;
+  const ret = ctx.createGain();
+  ret.gain.value = p.return;
+  input.connect(pre);
+  soft.g.connect(post);
+  hard.g.connect(post);
+  post.connect(tone);
+  tone.connect(ret);
+
+  const ramp = (param, v) => param.setTargetAtTime(v, ctx.currentTime, RAMP);
+  let enabled = true;
+  return {
+    type: 'distortion',
+    params: p,
+    input,
+    output: ret,
+    get enabled() { return enabled; },
+    setEnabled(on) {
+      enabled = Boolean(on);
+      ramp(ret.gain, enabled ? p.return : 0);
+    },
+    setParam(key, value) {
+      const v = clampFxParam('distortion', key, value);
+      if (v === null) return;
+      p[key] = v;
+      if (key === 'drive') {
+        ramp(pre.gain, distortionPreGain(v));
+        ramp(post.gain, distortionPostGain(v));
+      } else if (key === 'shape') {
+        ramp(soft.g.gain, 1 - v);
+        ramp(hard.g.gain, v);
+      } else if (key === 'tone') ramp(tone.frequency, v);
+      else if (key === 'return' && enabled) ramp(ret.gain, v);
+    },
+    tailMs: () => DIST_TAIL_MS,
+    dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, DIST_TAIL_MS / 4000),
+    disconnect() {
+      for (const n of [input, pre, soft.w, soft.g, hard.w, hard.g, post, tone, ret]) n.disconnect();
+    },
+  };
+}
+
 const CRUSHER_TAIL_MS = 50;
 
 /** Types that cannot be built without the AudioWorklet module (the UI hides them, scene load skips them). */
@@ -362,7 +456,7 @@ export function createBitcrusher(ctx, params) {
   };
 }
 
-const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq, bitcrusher: createBitcrusher };
+const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq, distortion: createDistortion, bitcrusher: createBitcrusher };
 
 /** Every effect type the app knows, in menu order. Defaults, ranges and factories above are keyed by these. */
 export const FX_TYPES = Object.keys(MAKERS);

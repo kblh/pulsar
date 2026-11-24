@@ -36,6 +36,7 @@ export function stubCtx() {
     createChannelSplitter: (n) => mk('splitter', { channels: n }),
     createChannelMerger: (n) => mk('merger', { channels: n }),
     createConvolver: () => mk('convolver'),
+    createWaveShaper: () => mk('shaper', { curve: null, oversample: 'none' }),
     createBuffer: (ch, len, sr) => {
       const data = Array.from({ length: ch }, () => new Float32Array(len));
       const b = { length: len, sampleRate: sr, getChannelData: (i) => data[i] };

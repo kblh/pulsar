@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
+import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createDistortion, distortionCurve, distortionPreGain, distortionPostGain, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
 import { stubCtx } from './helpers/stub-ctx.js';
 import { markWorkletLoaded } from '../js/worklet.js';
 
@@ -136,7 +136,7 @@ test('comb feedback falls 60 dB in the decay time, stays below 1 and the loop fi
 
 test('dispose ramps return to 0, disconnect disconnects everything', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  for (const make of [createDelay, createReverb, createEq]) {
+  for (const make of [createDelay, createReverb, createEq, createDistortion]) {
     const ctx = stubCtx();
     const fx = make(ctx);
     fx.setParam('decay', 4);
@@ -182,7 +182,7 @@ test('delay lowpass in the feedback loop has no resonance peak that makes the lo
 const lastTarget = (g) => g.gain.calls.filter((c) => c[0] === 'target').at(-1);
 
 test('bypass: setEnabled ramps the return to 0 and back without touching .value', () => {
-  for (const make of [createDelay, createReverb, createEq]) {
+  for (const make of [createDelay, createReverb, createEq, createDistortion]) {
     const ctx = stubCtx();
     const fx = make(ctx, { return: 0.6 });
     assert.equal(fx.enabled, true);
@@ -198,7 +198,7 @@ test('bypass: setEnabled ramps the return to 0 and back without touching .value'
 });
 
 test('bypass: changing return while disabled stays muted and applies on enable', () => {
-  for (const make of [createDelay, createReverb, createEq]) {
+  for (const make of [createDelay, createReverb, createEq, createDistortion]) {
     const ctx = stubCtx();
     const fx = make(ctx);
     fx.setEnabled(false);
@@ -221,7 +221,7 @@ test('bypass: a decay change while disabled leaves the muted return alone', () =
 });
 
 test('the registry lists every effect type with defaults, ranges and a factory', () => {
-  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq', 'bitcrusher']);
+  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq', 'distortion', 'bitcrusher']);
   for (const type of FX_TYPES) {
     assert.deepEqual(Object.keys(FX_RANGES[type]).sort(), Object.keys(FX_DEFAULTS[type]).sort(), type);
     for (const [key, v] of Object.entries(FX_DEFAULTS[type])) {
@@ -422,4 +422,69 @@ test('without the worklet only the bitcrusher is unavailable', () => {
   assert.throws(() => createEffect(ctx, 'bitcrusher'), /worklet/i);
   assert.throws(() => createBitcrusher(ctx), /worklet/i);
   for (const type of FX_TYPES.filter((t) => !FX_NEEDS_WORKLET.includes(t))) assert.equal(createEffect(ctx, type).type, type);
+});
+
+test('distortion: defaults, ranges and clamping', () => {
+  assert.deepEqual(createDistortion(stubCtx()).params, FX_DEFAULTS.distortion);
+  assert.equal(clampFxParam('distortion', 'drive', 5), 1);
+  assert.equal(clampFxParam('distortion', 'drive', -1), 0);
+  assert.equal(clampFxParam('distortion', 'tone', 10), 500);
+  assert.equal(clampFxParam('distortion', 'shape', 'abc'), null);
+  assert.equal(clampFxParam('distortion', 'bits', 4), null);
+  const fx = createDistortion(stubCtx(), { drive: 9, shape: 'x', tone: 20000 });
+  assert.deepEqual(fx.params, { ...FX_DEFAULTS.distortion, drive: 1, tone: 12000 });
+});
+
+test('distortion graph: input -> gain -> two shapers (soft, hard) -> make-up -> tone -> return', () => {
+  const ctx = stubCtx();
+  const fx = createDistortion(ctx);
+  const shapers = ctx.nodes.filter((n) => n.kind === 'shaper');
+  assert.equal(shapers.length, 2);
+  assert.deepEqual(shapers.map((n) => n.curve.length), [2048, 2048]);
+  assert.ok(shapers.every((n) => n.oversample === '2x'));
+  const tone = ctx.nodes.find((n) => n.kind === 'biquad');
+  assert.ok(reaches(fx.input, shapers[0]) && reaches(fx.input, shapers[1]));
+  assert.ok(reaches(shapers[0], tone) && reaches(shapers[1], tone));
+  assert.ok(tone.connections.includes(fx.output));
+  assert.equal(fx.type, 'distortion');
+});
+
+test('distortion curves: soft is a smooth tanh, hard clips flat, both odd, bounded and equally steep at 0', () => {
+  const soft = distortionCurve('soft');
+  const hard = distortionCurve('hard');
+  for (const c of [soft, hard]) {
+    assert.ok(c.every((v) => Math.abs(v) <= 1 + 1e-6));
+    assert.ok(Math.abs(c[0] + c[c.length - 1]) < 1e-6); // odd: no DC offset
+    assert.ok(Math.abs(c[c.length - 1] - 1) < 1e-6);
+  }
+  const mid = soft.length / 2;
+  const slope = (c) => (c[mid + 1] - c[mid - 1]) / (2 / (c.length - 1)) / 2;
+  assert.ok(Math.abs(slope(soft) - slope(hard)) / slope(hard) < 0.05);
+  assert.equal(hard[soft.length - 1], hard[soft.length - 50]); // flat at the top
+  assert.ok(soft[soft.length - 50] < soft[soft.length - 1]); // still rising
+});
+
+test('distortion gains: drive 0 is clean and unity, hotter drive means more gain in front and less after', () => {
+  assert.equal(distortionPreGain(0), 1);
+  assert.ok(Math.abs(distortionPreGain(1) - 10 ** 1.8) < 1e-9);
+  assert.ok(Math.abs(distortionPostGain(0) - 0.4) < 0.1); // small-signal gain 2.5 * 0.4 is about 1
+  for (let d = 0; d < 1; d += 0.1) assert.ok(distortionPostGain(d + 0.1) <= distortionPostGain(d) + 1e-12);
+  for (const d of [0, 0.3, 1]) assert.ok(Number.isFinite(distortionPostGain(d)) && distortionPostGain(d) > 0);
+});
+
+test('distortion setParam moves everything by ramps: no .value after creation, curves never swapped', () => {
+  const ctx = stubCtx();
+  const fx = createDistortion(ctx);
+  const curves = ctx.nodes.filter((n) => n.kind === 'shaper').map((n) => n.curve);
+  const before = valueCalls(ctx);
+  for (const [k, v] of [['drive', 1], ['shape', 1], ['tone', 800], ['return', 0.2], ['drive', 0]]) fx.setParam(k, v);
+  assert.deepEqual(valueCalls(ctx), before);
+  assert.deepEqual(ctx.nodes.filter((n) => n.kind === 'shaper').map((n) => n.curve), curves);
+  const gains = ctx.nodes.filter((n) => n.kind === 'gain');
+  const target = (g) => g.gain.calls.filter((c) => c[0] === 'target').at(-1)?.[1];
+  assert.ok(gains.some((g) => target(g) === distortionPreGain(0)));
+  fx.setParam('shape', 0.25);
+  const [soft, hard] = gains.filter((g) => g.gain.calls.some((c) => c[0] === 'target' && (c[1] === 0.75 || c[1] === 0.25)));
+  assert.deepEqual([target(soft), target(hard)], [0.75, 0.25]);
+  assert.equal(fx.tailMs(), 100);
 });

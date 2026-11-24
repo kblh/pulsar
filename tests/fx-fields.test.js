@@ -41,3 +41,12 @@ test('bitcrusher fields: bits as "N bit", rate as a divisor', () => {
   assert.equal(f.bits.step, 1);
   assert.equal(f.rate.step, 1);
 });
+
+test('distortion fields: drive and shape in percent, tone in Hz on a log scale', () => {
+  const f = Object.fromEntries(FX_FIELDS.distortion.map((x) => [x.key, x]));
+  assert.equal(f.drive.format(0.4), '40%');
+  assert.equal(f.shape.format(1), '100%');
+  assert.equal(f.tone.format(5000), '5000 Hz');
+  assert.equal(f.tone.scale, 'log');
+  assert.equal(FX_LABELS.distortion, 'drive');
+});
