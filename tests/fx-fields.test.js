@@ -50,3 +50,11 @@ test('distortion fields: drive and shape in percent, tone in Hz on a log scale',
   assert.equal(f.tone.scale, 'log');
   assert.equal(FX_LABELS.distortion, 'drive');
 });
+
+test('chorus fields: rate in Hz on a log scale, the rest in percent', () => {
+  const f = Object.fromEntries(FX_FIELDS.chorus.map((x) => [x.key, x]));
+  assert.equal(f.rate.format(0.8), '0.80 Hz');
+  assert.equal(f.rate.scale, 'log');
+  assert.equal(f.depth.format(0.4), '40%');
+  assert.equal(FX_LABELS.chorus, 'chorus');
+});

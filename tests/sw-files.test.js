@@ -10,6 +10,6 @@ test('the service worker caches every js file', () => {
   assert.deepEqual(missing, []);
 });
 
-test('the cache version is v24', () => {
-  assert.match(sw, /const CACHE = 'pulsar-v24'/);
+test('the cache version is v25', () => {
+  assert.match(sw, /const CACHE = 'pulsar-v25'/);
 });

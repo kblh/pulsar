@@ -8,6 +8,7 @@ export const FX_DEFAULTS = {
   reverb: { decay: 2.5, damping: 0.5, return: 0.5, width: 1 },
   eq: { low: 0, mid: 0, high: 0, midFreq: 1000, return: 0.5 },
   distortion: { drive: 0.4, shape: 0.3, tone: 5000, return: 0.5 },
+  chorus: { rate: 0.8, depth: 0.4, width: 1, return: 0.5 },
   bitcrusher: { bits: 8, rate: 4, return: 0.5 },
 };
 
@@ -16,6 +17,7 @@ export const FX_RANGES = {
   reverb: { decay: [0.3, 10], damping: [0, 1], return: [0, 1], width: [0, 1] },
   eq: { low: [-12, 12], mid: [-12, 12], high: [-12, 12], midFreq: [200, 5000], return: [0, 1] },
   distortion: { drive: [0, 1], shape: [0, 1], tone: [500, 12000], return: [0, 1] },
+  chorus: { rate: [0.05, 5], depth: [0, 1], width: [0, 1], return: [0, 1] },
   bitcrusher: { bits: [1, 16], rate: [1, 32], return: [0, 1] },
 };
 
@@ -311,6 +313,80 @@ export function createEq(ctx, params) {
   };
 }
 
+const CHORUS_BASE = 0.014; // seconds: the middle of the swing; a chorus is a short delay whose time wobbles
+const CHORUS_SWING = 0.006; // seconds: how far depth 1 moves the delay either way (the pitch wobble follows from it)
+const CHORUS_TAIL_MS = 100;
+
+/** The right channel's swing relative to the left's: width 1 moves it the opposite way (wide), 0 the same way (mono). */
+export const chorusRightSwing = (width) => 1 - 2 * width;
+
+/**
+ * Chorus: the mono sum goes into two short delays, one per channel, whose times are moved by one slow sine LFO, the
+ * right one by the mirror image of the left. Wet only: as a send effect it adds the thickening copy to the dry signal.
+ */
+export function createChorus(ctx, params) {
+  const p = accept('chorus', params);
+  const input = ctx.createGain();
+  input.gain.value = 1;
+  const send = ctx.createGain();
+  send.channelCount = 1;
+  send.channelCountMode = 'explicit'; // both delays take the sum of the channels
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sine';
+  lfo.frequency.value = p.rate;
+  const swingL = ctx.createGain();
+  swingL.gain.value = p.depth * CHORUS_SWING;
+  const swingR = ctx.createGain();
+  swingR.gain.value = p.depth * CHORUS_SWING * chorusRightSwing(p.width);
+  const merger = ctx.createChannelMerger(2);
+  const lines = [swingL, swingR].map((swing, side) => {
+    const d = ctx.createDelay(0.05);
+    d.delayTime.value = CHORUS_BASE;
+    send.connect(d);
+    lfo.connect(swing);
+    swing.connect(d.delayTime);
+    d.connect(merger, 0, side);
+    return d;
+  });
+  const ret = ctx.createGain();
+  ret.gain.value = p.return;
+  input.connect(send);
+  merger.connect(ret);
+  lfo.start();
+
+  const ramp = (param, v) => param.setTargetAtTime(v, ctx.currentTime, RAMP);
+  const applySwing = () => {
+    ramp(swingL.gain, p.depth * CHORUS_SWING);
+    ramp(swingR.gain, p.depth * CHORUS_SWING * chorusRightSwing(p.width));
+  };
+  let enabled = true;
+  return {
+    type: 'chorus',
+    params: p,
+    input,
+    output: ret,
+    get enabled() { return enabled; },
+    setEnabled(on) {
+      enabled = Boolean(on);
+      ramp(ret.gain, enabled ? p.return : 0);
+    },
+    setParam(key, value) {
+      const v = clampFxParam('chorus', key, value);
+      if (v === null) return;
+      p[key] = v;
+      if (key === 'rate') ramp(lfo.frequency, v);
+      else if (key === 'depth' || key === 'width') applySwing();
+      else if (key === 'return' && enabled) ramp(ret.gain, v);
+    },
+    tailMs: () => CHORUS_TAIL_MS,
+    dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, CHORUS_TAIL_MS / 4000),
+    disconnect() {
+      lfo.stop();
+      for (const n of [input, send, lfo, swingL, swingR, ...lines, merger, ret]) n.disconnect();
+    },
+  };
+}
+
 const DIST_TAIL_MS = 100;
 const DIST_CURVE_POINTS = 2048;
 const DIST_MAX_DB = 36; // gain in front of the shaper at drive 1; a hotter signal only gets clamped by the curve ends
@@ -456,7 +532,7 @@ export function createBitcrusher(ctx, params) {
   };
 }
 
-const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq, distortion: createDistortion, bitcrusher: createBitcrusher };
+const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq, chorus: createChorus, distortion: createDistortion, bitcrusher: createBitcrusher };
 
 /** Every effect type the app knows, in menu order. Defaults, ranges and factories above are keyed by these. */
 export const FX_TYPES = Object.keys(MAKERS);

@@ -34,7 +34,7 @@ test('addEffect connects the output to master and numbers effects', (t) => {
   assert.equal(fx.type, 'delay');
   assert.ok(fx.output.connections.includes(master));
   assert.deepEqual(routing.effects, [fx]);
-  assert.throws(() => routing.addEffect('chorus'));
+  assert.throws(() => routing.addEffect('flanger'));
 });
 
 test('setSend selects an effect and ramps the level', (t) => {

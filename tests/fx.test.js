@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createDistortion, distortionCurve, distortionPreGain, distortionPostGain, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
+import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createDistortion, createChorus, chorusRightSwing, distortionCurve, distortionPreGain, distortionPostGain, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
 import { stubCtx } from './helpers/stub-ctx.js';
 import { markWorkletLoaded } from '../js/worklet.js';
 
@@ -136,7 +136,7 @@ test('comb feedback falls 60 dB in the decay time, stays below 1 and the loop fi
 
 test('dispose ramps return to 0, disconnect disconnects everything', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  for (const make of [createDelay, createReverb, createEq, createDistortion]) {
+  for (const make of [createDelay, createReverb, createEq, createChorus, createDistortion]) {
     const ctx = stubCtx();
     const fx = make(ctx);
     fx.setParam('decay', 4);
@@ -182,7 +182,7 @@ test('delay lowpass in the feedback loop has no resonance peak that makes the lo
 const lastTarget = (g) => g.gain.calls.filter((c) => c[0] === 'target').at(-1);
 
 test('bypass: setEnabled ramps the return to 0 and back without touching .value', () => {
-  for (const make of [createDelay, createReverb, createEq, createDistortion]) {
+  for (const make of [createDelay, createReverb, createEq, createChorus, createDistortion]) {
     const ctx = stubCtx();
     const fx = make(ctx, { return: 0.6 });
     assert.equal(fx.enabled, true);
@@ -198,7 +198,7 @@ test('bypass: setEnabled ramps the return to 0 and back without touching .value'
 });
 
 test('bypass: changing return while disabled stays muted and applies on enable', () => {
-  for (const make of [createDelay, createReverb, createEq, createDistortion]) {
+  for (const make of [createDelay, createReverb, createEq, createChorus, createDistortion]) {
     const ctx = stubCtx();
     const fx = make(ctx);
     fx.setEnabled(false);
@@ -221,7 +221,7 @@ test('bypass: a decay change while disabled leaves the muted return alone', () =
 });
 
 test('the registry lists every effect type with defaults, ranges and a factory', () => {
-  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq', 'distortion', 'bitcrusher']);
+  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq', 'chorus', 'distortion', 'bitcrusher']);
   for (const type of FX_TYPES) {
     assert.deepEqual(Object.keys(FX_RANGES[type]).sort(), Object.keys(FX_DEFAULTS[type]).sort(), type);
     for (const [key, v] of Object.entries(FX_DEFAULTS[type])) {
@@ -236,7 +236,7 @@ test('the registry lists every effect type with defaults, ranges and a factory',
 });
 
 test('createEffect refuses an unknown type', () => {
-  assert.throws(() => createEffect(stubCtx(), 'chorus'), /unknown effect: chorus/);
+  assert.throws(() => createEffect(stubCtx(), 'flanger'), /unknown effect: flanger/);
   assert.throws(() => createEffect(stubCtx(), undefined), /unknown effect/);
 });
 
@@ -487,4 +487,60 @@ test('distortion setParam moves everything by ramps: no .value after creation, c
   const [soft, hard] = gains.filter((g) => g.gain.calls.some((c) => c[0] === 'target' && (c[1] === 0.75 || c[1] === 0.25)));
   assert.deepEqual([target(soft), target(hard)], [0.75, 0.25]);
   assert.equal(fx.tailMs(), 100);
+});
+
+test('chorus: defaults, ranges and clamping', () => {
+  assert.deepEqual(createChorus(stubCtx()).params, FX_DEFAULTS.chorus);
+  assert.equal(clampFxParam('chorus', 'rate', 50), 5);
+  assert.equal(clampFxParam('chorus', 'rate', 0), 0.05);
+  assert.equal(clampFxParam('chorus', 'depth', 2), 1);
+  assert.equal(clampFxParam('chorus', 'feedback', 0.5), null);
+  assert.deepEqual(createChorus(stubCtx(), { rate: 'x', depth: 9, width: -1 }).params, { ...FX_DEFAULTS.chorus, depth: 1, width: 0 });
+});
+
+test('chorus graph: mono sum -> two short delays modulated by one LFO -> left and right -> return', () => {
+  const ctx = stubCtx();
+  const fx = createChorus(ctx);
+  const lfo = ctx.nodes.find((n) => n.kind === 'osc');
+  const delays = ctx.nodes.filter((n) => n.kind === 'delay');
+  const merger = ctx.nodes.find((n) => n.kind === 'merger');
+  assert.equal(delays.length, 2);
+  assert.equal(lfo.type, 'sine');
+  assert.deepEqual(lfo.starts.length, 1);
+  assert.ok(delays.every((d) => d.maxDelayTime <= 0.05 && d.delayTime.calls.find((c) => c[0] === 'value')[1] > 0.006));
+  assert.ok(delays.every((d) => reaches(fx.input, d)));
+  const swings = ctx.nodes.filter((n) => n.kind === 'gain' && lfo.connections.includes(n));
+  assert.equal(swings.length, 2);
+  assert.deepEqual(swings.map((g) => g.connections[0]), delays.map((d) => d.delayTime)); // the LFO moves each delay time
+  assert.ok(delays.every((d) => d.connections.includes(merger)));
+  assert.ok(merger.connections.includes(fx.output));
+  const send = ctx.nodes.find((n) => n.channelCount === 1);
+  assert.equal(send.channelCountMode, 'explicit');
+});
+
+test('chorus width: the right channel swings against the left at 1, with it at 0', () => {
+  assert.equal(chorusRightSwing(1), -1);
+  assert.equal(chorusRightSwing(0), 1);
+  assert.equal(chorusRightSwing(0.5), 0);
+});
+
+test('chorus never leaves the delay time near or below zero', () => {
+  const ctx = stubCtx();
+  createChorus(ctx, { depth: 1 });
+  const [swingL] = ctx.nodes.filter((n) => n.kind === 'gain' && n.gain.calls.some((c) => c[0] === 'value' && c[1] > 0.001 && c[1] < 0.01));
+  const base = ctx.nodes.find((n) => n.kind === 'delay').delayTime.calls.find((c) => c[0] === 'value')[1];
+  assert.ok(base - swingL.gain.calls.find((c) => c[0] === 'value')[1] > 0.005);
+});
+
+test('chorus setParam moves everything by ramps, and disconnect stops the LFO', () => {
+  const ctx = stubCtx();
+  const fx = createChorus(ctx);
+  const lfo = ctx.nodes.find((n) => n.kind === 'osc');
+  const before = valueCalls(ctx);
+  for (const [k, v] of [['rate', 3], ['depth', 0.9], ['width', 0], ['return', 0.2]]) fx.setParam(k, v);
+  assert.deepEqual(valueCalls(ctx), before);
+  assert.deepEqual(lfo.frequency.calls.filter((c) => c[0] === 'target').at(-1).slice(0, 2), ['target', 3]);
+  assert.equal(fx.tailMs(), 100);
+  fx.disconnect();
+  assert.deepEqual(lfo.stops.length, 1);
 });

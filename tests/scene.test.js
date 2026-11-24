@@ -82,7 +82,7 @@ const mod = (extra = {}) => ({ type: 'melodic', name: 'm', params: {}, volume: 1
 test('validateScene drops unknown types and says so', () => {
   const { scene, problems } = validateScene({
     version: 1,
-    effects: [{ type: 'chorus', params: {} }, { type: 'delay', params: {} }],
+    effects: [{ type: 'flanger', params: {} }, { type: 'delay', params: {} }],
     modules: [mod({ type: 'banjo' }), mod()],
   });
   assert.equal(scene.effects.length, 1);
@@ -133,7 +133,7 @@ test('validateScene clamps or drops bad parameter values', () => {
 test('validateScene limits sends to three and remaps indexes after dropped effects', () => {
   const { scene } = validateScene({
     version: 1,
-    effects: [{ type: 'chorus', params: {} }, { type: 'delay', params: {} }, { type: 'reverb', params: {} }],
+    effects: [{ type: 'flanger', params: {} }, { type: 'delay', params: {} }, { type: 'reverb', params: {} }],
     modules: [
       mod({ sends: [{ fx: 0, level: 0.5 }, { fx: 1, level: 2 }, { fx: 2, level: 0.1 }, { fx: 2, level: 0.1 }, { fx: 2, level: 0.1 }] }),
       mod({ sends: [{ fx: 99, level: 0.5 }] }),
