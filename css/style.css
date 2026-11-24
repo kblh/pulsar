@@ -50,7 +50,8 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
   font-size: 12px; font-weight: normal; color: var(--dim); text-transform: uppercase; letter-spacing: 0.18em;
 }
 .section-title::after { content: ''; flex: 1; border-top: 1px dashed var(--line); }
-.cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); align-items: start; }
+.cards { display: grid; gap: 12px; align-items: start; /* at most 3 columns, each at least 300px, else fewer */
+  grid-template-columns: repeat(auto-fill, minmax(max(min(100%, 300px), calc((100% - 24px) / 3)), 1fr)); }
 
 /* card: a small HUD panel, or the full-screen detail */
 .card {
@@ -67,7 +68,8 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
   flex: 1 1 8ch; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--accent); letter-spacing: 0.04em; overflow-wrap: anywhere;
 }
-.card-head .card-volume { flex: 1 1 110px; max-width: 45%; min-width: 0; }
+.card-head .card-volume { display: flex; align-items: center; gap: 4px; flex: 1 1 130px; max-width: 50%; min-width: 0; }
+.card-volume .hud-slider { flex: 1 1 0; }
 .card-name { color: inherit; letter-spacing: inherit; text-align: left; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .card-body { padding-bottom: 12px; }
@@ -101,9 +103,11 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 }
 .pedal::before { left: 12px; }
 .pedal::after { right: 12px; }
-.pedal-knobs { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 6px; padding-top: 4px; }
-.knob-wrap { display: flex; flex-direction: column; align-items: center; width: 76px; }
-.knob-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg); }
+.pedal .knobs { justify-content: center; padding-top: 4px; }
+.knob-wrap { display: flex; flex-direction: column; align-items: center; width: 84px; }
+.knob-compact { width: 48px; }
+.knob-compact .knob { width: 44px; height: 44px; }
+.knob-label { font-size: 12px; letter-spacing: 0.04em; color: var(--dim); white-space: nowrap; }
 .knob-value { min-height: 1.4em; font-size: 11px; color: var(--dim); white-space: nowrap; }
 .knob { width: 64px; height: 64px; border-radius: 50%; cursor: ns-resize; touch-action: none; }
 .knob:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
@@ -128,6 +132,32 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 .footswitch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .pedal.bypassed .knob-arc { opacity: 0.35; }
 .pedal.bypassed .pedal-name { opacity: 0.6; }
+/* a knob group: any number of knobs side by side, wrapping on a narrow screen */
+.knobs { display: flex; flex-wrap: wrap; gap: 12px 6px; }
+
+/* module detail: titled groups, every control with its label above; on a wide screen the groups sit in columns */
+.groups { display: grid; gap: 4px 24px; align-items: start; /* at most 3 columns, each at least 300px, else fewer */
+  grid-template-columns: repeat(auto-fit, minmax(max(min(100%, 300px), calc((100% - 48px) / 3)), 1fr)); }
+.card:not(.open) .groups { display: block; }
+.group { min-width: 0; padding-bottom: 8px; }
+.group-title {
+  display: flex; align-items: center; justify-content: center; gap: 10px; margin: 12px 0 4px;
+  font-size: 12px; font-weight: normal; color: var(--dim); text-transform: uppercase; letter-spacing: 0.18em;
+}
+.group-title::before, .group-title::after { content: ''; flex: 1; border-top: 1px dashed var(--line); }
+.field { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 6px 0; min-width: 0; }
+.field-label { font-size: 12px; letter-spacing: 0.08em; color: var(--dim); }
+.field > .hud-slider, .field > .env, .field > .pads, .field > .keys, .field > input[type=text] { align-self: stretch; }
+.field > .hud-slider { flex: none; }
+.pair, .send { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; align-self: stretch; }
+.field > .hud-slider, .pair, .send { width: 100%; max-width: 360px; align-self: center; }
+.pair select { flex: 0 1 150px; }
+.send select { flex: 0 1 200px; }
+.pair select, .send select { text-align: center; text-align-last: center; }
+.groups .knobs { margin: 6px 0; justify-content: center; }
+.groups .pads { justify-content: center; }
+.groups .keys, .groups .env { margin-inline: auto; }
+.groups .env-readout, .groups .line { justify-content: center; }
 body.detail-open { overflow: hidden; }
 body.detail-open header.bar, body.detail-open #scene-panel, body.detail-open .card:not(.open) { visibility: hidden; }
 

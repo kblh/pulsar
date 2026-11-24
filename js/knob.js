@@ -36,10 +36,13 @@ export function arcPath(cx, cy, r, from, to) {
 export const knobOrigin = ({ min, max, scale = 'linear' }) => (min < 0 && max > 0 ? toFraction(0, { min, max, scale }) : 0);
 
 /** The position (0..1) after a drag that started at `start`: up and right raise it, down and left lower it. */
-export function dragFraction(start, dx, dy, { fine = false } = {}) {
+export function dragFraction(start, dx, dy, { fine = false, px = KNOB_DRAG_PX } = {}) {
   const gain = fine ? KNOB_FINE : 1;
-  return clamp(start + (gain * (dx - dy)) / KNOB_DRAG_PX, 0, 1);
+  return clamp(start + (gain * (dx - dy)) / px, 0, 1);
 }
+
+/** The drag length that covers the whole range: longer for a range with many steps (a tempo), so one pixel is about a step or less. */
+export const dragLength = ({ min, max, step }) => clamp(((max - min) / step) * 1.5, KNOB_DRAG_PX, 420);
 
 function svg(tag, attrs = {}, ...children) {
   const e = document.createElementNS(SVG_NS, tag);
@@ -108,7 +111,7 @@ export function createKnob({ min, max, step, value, scale = 'linear', format, on
   });
   face.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
-    change(fromFraction(dragFraction(drag.from, e.clientX - drag.x, e.clientY - drag.y, { fine: e.shiftKey }), opts));
+    change(fromFraction(dragFraction(drag.from, e.clientX - drag.x, e.clientY - drag.y, { fine: e.shiftKey, px: dragLength(opts) }), opts));
   });
   const end = (e) => {
     if (!drag || e.pointerId !== drag.id) return;

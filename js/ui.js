@@ -14,6 +14,7 @@ import { moduleFilename, moduleToFile, parseModuleFile } from './module-file.js'
 import { createCard } from './card.js';
 import { iconButton, setIcon, icon } from './icons.js';
 import { createSlider, createSegmented } from './controls.js';
+import { createKnob } from './knob.js';
 import { createEnvelopeEditor } from './envelope.js';
 import { splitRoot, joinRoot, formatCents } from './hud.js';
 import { createPedal } from './pedal.js';
@@ -28,9 +29,18 @@ function el(tag, props = {}, ...children) {
   return e;
 }
 
-function row(label, ...controls) {
-  return el('div', { className: 'row' }, el('label', { textContent: label }), ...controls);
+/** A control with its label above it. */
+function field(label, ...controls) {
+  return el('div', { className: 'field' }, el('span', { className: 'field-label', textContent: label }), ...controls);
 }
+
+/** A titled group of fields; on a wide screen the groups sit in columns. */
+function group(title, ...children) {
+  return el('div', { className: 'group' }, el('h3', { className: 'group-title', textContent: title }), ...children);
+}
+
+/** Knobs side by side; they wrap on a narrow screen. */
+const knobs = (...nodes) => el('div', { className: 'knobs' }, ...nodes);
 
 function select(options, value, onChange) {
   const s = el('select');
@@ -51,18 +61,23 @@ const waveOptions = WAVES.map((w) => ({ value: w, label: { sawtooth: 'saw', tria
 /** A segmented switch (the node only). */
 const seg = (options, value, ariaLabel, onChange) => createSegmented({ options, value, ariaLabel, onChange }).node;
 
-/** A slider row for `m.params[key]`; it shows what the module accepted and never writes on first paint. */
-function paramSlider(label, m, key, { min, max, step, format = String, nudge = step, scale }) {
-  const s = createSlider({
-    min, max, step, scale, format, nudge, ariaLabel: label, value: m.params[key],
+/** A knob for `m.params[key]`; it shows what the module accepted and never writes on first paint. */
+function paramKnob(label, m, key, { min, max, step, format = String, defaultValue }) {
+  const k = createKnob({
+    min, max, step, format, label, ariaLabel: label, value: m.params[key], defaultValue,
     onInput: (v) => {
       m.setParam(key, v);
-      s.set(m.params[key]);
+      k.set(m.params[key]);
     },
   });
-  const r = row(label, s.node);
-  if (key === 'bpm') r.classList.add('bpm-row'); // dimmed while the global BPM is on
-  return r;
+  return k.node;
+}
+
+/** The tempo knob; it is dimmed while the global BPM is on. */
+function bpmKnob(m) {
+  const node = paramKnob('bpm', m, 'bpm', { min: 20, max: 300, step: 1, defaultValue: 120 });
+  node.classList.add('bpm-row');
+  return node;
 }
 
 /** A text grid row: one span per step; update() paints the pattern and playhead. */
@@ -86,8 +101,8 @@ function pitchRows(m, { withNotes }) {
   const cfg = () => ({ ...m.params.pitchConfig });
   const setCfg = (k) => (v) => m.setParam('pitchConfig', { ...cfg(), notes: cfg().notes ?? 'C4 E4 G4 A4', [k]: k === 'octaves' ? Number(v) : v });
   const c = m.params.pitchConfig;
-  const octaves = createSlider({
-    min: 1, max: 4, step: 1, format: String, nudge: 1, ariaLabel: 'octaves', value: c.octaves ?? 2,
+  const octaves = createKnob({
+    min: 1, max: 4, step: 1, format: String, label: 'octaves', ariaLabel: 'octaves', value: c.octaves ?? 2, defaultValue: 2,
     onInput: (v) => {
       setCfg('octaves')(v);
       octaves.set(m.params.pitchConfig.octaves ?? 2);
@@ -95,10 +110,11 @@ function pitchRows(m, { withNotes }) {
   });
   const mode = createSegmented({ options: ['scale', 'notes'], value: c.mode, ariaLabel: 'pitch mode', onChange: setCfg('mode') });
   const rows = [
-    row('pitch', mode.node),
-    row('root', select(ROOTS, c.root ?? 'C', setCfg('root')), select(Object.keys(SCALES), c.scale ?? 'pentatonicMinor', setCfg('scale'))),
-    row('octaves', octaves.node),
-    ...(withNotes ? [row('notes', text(c.notes ?? 'C4 E4 G4 A4', setCfg('notes')))] : []),
+    field('pitch', mode.node),
+    field('root and scale', el('div', { className: 'pair' },
+      select(ROOTS, c.root ?? 'C', setCfg('root')), select(Object.keys(SCALES), c.scale ?? 'pentatonicMinor', setCfg('scale')))),
+    knobs(octaves.node),
+    ...(withNotes ? [field('notes', text(c.notes ?? 'C4 E4 G4 A4', setCfg('notes')))] : []),
   ];
   let shown = c.mode;
   rows.syncMode = () => { // the keyboard can switch the mode
@@ -106,6 +122,17 @@ function pitchRows(m, { withNotes }) {
     if (now !== shown) mode.set((shown = now));
   };
   return rows;
+}
+
+function oscGroup(m) {
+  const set = (k) => (v) => m.setParam(k, v);
+  return group('oscillators',
+    field('osc', seg(waveOptions, m.params.wave, 'osc', set('wave'))),
+    field('osc 2', seg(waveOptions, m.params.wave2, 'osc 2', set('wave2'))),
+    knobs(
+      paramKnob('mix', m, 'mix', { min: 0, max: 1, step: 0.05, format: pct, defaultValue: 0.5 }),
+      paramKnob('detune', m, 'detune', { min: -50, max: 50, step: 1, format: formatCents, defaultValue: 0 }),
+    ));
 }
 
 function melodicControls(m, live) {
@@ -140,32 +167,35 @@ function melodicControls(m, live) {
     },
   });
   return [
-    row('osc', seg(waveOptions, m.params.wave, 'osc', set('wave'))),
-    row('osc 2', seg(waveOptions, m.params.wave2, 'osc 2', set('wave2'))),
-    paramSlider('mix', m, 'mix', { min: 0, max: 1, step: 0.05, format: pct }),
-    paramSlider('detune', m, 'detune', { min: -50, max: 50, step: 1, format: formatCents }),
-    row('envelope', envelope.node),
-    paramSlider('bpm', m, 'bpm', { min: 20, max: 300, step: 1 }),
-    paramSlider('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct }),
-    ...pitch,
-    row('keys', keyboard.node),
-    row('rhythm', rhythmGrid.node),
-    paramSlider('randomize', m, 'randomize', { min: 1, max: 10, step: 1 }),
-    paramSlider('rhythm mod', m, 'rhythmMod', { min: 1, max: 10, step: 1 }),
-    row('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution'))),
+    oscGroup(m),
+    group('envelope', envelope.node),
+    group('timing', knobs(
+      bpmKnob(m),
+      paramKnob('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct, defaultValue: 0 }),
+    )),
+    group('pitch', ...pitch, field('keys', keyboard.node)),
+    group('rhythm',
+      field('steps', rhythmGrid.node),
+      knobs(
+        paramKnob('randomize', m, 'randomize', { min: 1, max: 10, step: 1 }),
+        paramKnob('rhythm mod', m, 'rhythmMod', { min: 1, max: 10, step: 1 }),
+      ),
+      field('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution')))),
   ];
 }
 
-function mixRows(engine, m) {
-  const panText = (v) => (Math.abs(v) < 0.05 ? 'C' : `${v < 0 ? 'L' : 'R'}${Math.round(Math.abs(v) * 100)}`);
-  const pan = createSlider({
-    min: -1, max: 1, step: 0.05, format: panText, nudge: 0.05, ariaLabel: 'pan', value: m.pan ?? 0,
+/** The pan knob for the card header: small, no label (the aria label names it), double tap centres it. */
+function panKnob(engine, m) {
+  const pan = createKnob({
+    min: -1, max: 1, step: 0.05, ariaLabel: 'pan', value: m.pan ?? 0, defaultValue: 0,
     onInput: (v) => {
       engine.setPan(m, v);
       pan.set(m.pan);
     },
   });
-  return [row('pan', pan.node)];
+  pan.node.classList.add('knob-compact');
+  pan.node.title = 'pan';
+  return pan.node;
 }
 
 /** The panel title's name: click to edit, Enter or blur keeps it, Esc cancels, empty falls back to the type. */
@@ -201,7 +231,7 @@ function nameEditor(obj) {
   return node;
 }
 
-/** One send slot: a target select (rebuilt by fill() when effects come and go) and a level slider. */
+/** One send slot: a target select (rebuilt by fill() when effects come and go) and a level knob. */
 function sendRow(engine, m, slot) {
   const sel = el('select');
   const fill = () => {
@@ -216,20 +246,21 @@ function sendRow(engine, m, slot) {
     sel.value = m.sends[slot].fx ?? '';
   };
   fill();
-  const level = createSlider({
-    min: 0, max: 1, step: 0.01, format: pct, nudge: 0.05, ariaLabel: `send ${slot + 1} level`, value: m.sends[slot].level,
+  sel.setAttribute('aria-label', `send ${slot + 1} target`);
+  const level = createKnob({
+    min: 0, max: 1, step: 0.01, format: pct, ariaLabel: `send ${slot + 1} level`, value: m.sends[slot].level, defaultValue: 0,
     onInput: (v) => {
       engine.setSend(m, slot, { level: v });
       level.set(m.sends[slot].level);
     },
   });
-  return { row: row(`send ${slot + 1}`, sel, level.node), fill };
+  return { row: field(`send ${slot + 1}`, el('div', { className: 'send' }, sel, level.node)), fill };
 }
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 const midiName = (n) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
 
-/** The drone's base tone: a tone select and an octave slider. Both show what the module accepted. */
+/** The drone's base tone: a tone select and an octave knob. Both show what the module accepted. */
 function rootPicker(m) {
   const cur = () => splitRoot(m.params.rootNote) ?? { root: 'C', octave: 2 };
   const show = () => {
@@ -242,25 +273,22 @@ function rootPicker(m) {
     show();
   };
   const tone = select(ROOTS, cur().root, (root) => apply(root, cur().octave));
-  const octave = createSlider({
-    min: 0, max: 6, step: 1, format: String, nudge: 1, ariaLabel: 'octave', value: cur().octave,
+  const octave = createKnob({
+    min: 0, max: 6, step: 1, format: String, label: 'octave', ariaLabel: 'octave', value: cur().octave, defaultValue: 2,
     onInput: (o) => apply(tone.value, o),
   });
-  return row('base', tone, octave.node);
+  return [field('base tone', tone), knobs(octave.node)];
 }
 
 function droneControls(m) {
-  const set = (k) => (v) => m.setParam(k, v);
   return [
-    row('osc', seg(waveOptions, m.params.wave, 'osc', set('wave'))),
-    row('osc 2', seg(waveOptions, m.params.wave2, 'osc 2', set('wave2'))),
-    paramSlider('mix', m, 'mix', { min: 0, max: 1, step: 0.05, format: pct }),
-    paramSlider('detune', m, 'detune', { min: -50, max: 50, step: 1, format: formatCents }),
-    rootPicker(m),
-    ...pitchRows(m, { withNotes: true }),
-    paramSlider('max extra', m, 'maxExtra', { min: 0, max: 6, step: 1 }),
-    paramSlider('rate', m, 'rate', { min: 1, max: 10, step: 1 }),
-    paramSlider('fade s', m, 'fade', { min: 0.5, max: 30, step: 0.5, format: (v) => `${v} s` }),
+    oscGroup(m),
+    group('pitch', ...rootPicker(m), ...pitchRows(m, { withNotes: true })),
+    group('evolution', knobs(
+      paramKnob('max extra', m, 'maxExtra', { min: 0, max: 6, step: 1 }),
+      paramKnob('rate', m, 'rate', { min: 1, max: 10, step: 1 }),
+      paramKnob('fade', m, 'fade', { min: 0.5, max: 30, step: 0.5, format: (v) => `${v} s` }),
+    )),
   ];
 }
 
@@ -307,13 +335,17 @@ function rhythmicControls(m, live) {
   paint();
   live.push({ update: (playhead) => { paint(); grid.setPlayhead(playhead); } });
   return [
-    paramSlider('bpm', m, 'bpm', { min: 20, max: 300, step: 1 }),
-    paramSlider('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct }),
-    row('lane', laneSeg),
-    row('mute', el('div', { className: 'mute-row' }, ...muteButtons)),
-    row('steps', grid.node),
-    paramSlider('rhythm mod', m, 'rhythmMod', { min: 1, max: 10, step: 1 }),
-    row('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution'))),
+    group('timing', knobs(
+      bpmKnob(m),
+      paramKnob('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct, defaultValue: 0 }),
+    )),
+    group('pattern',
+      field('lane', laneSeg),
+      field('steps', grid.node),
+      field('mute', el('div', { className: 'mute-row' }, ...muteButtons))),
+    group('evolution',
+      knobs(paramKnob('rhythm mod', m, 'rhythmMod', { min: 1, max: 10, step: 1 })),
+      field('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution')))),
   ];
 }
 
@@ -407,7 +439,6 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
         volume.set(m.volume);
       },
     });
-    volume.node.classList.add('card-volume');
 
     let rows;
     if (m.type === 'drone') {
@@ -427,17 +458,16 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     sendFills.set(m.id, sends.map((x) => x.fill));
     const controls = [
       ...{ melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls }[m.type](m, live),
-      ...mixRows(engine, m),
-      ...sends.map((x) => x.row),
+      group('sends', ...sends.map((x) => x.row)),
     ];
     const card = createCard({
       kind: 'module',
       title: `${m.name}`,
       nameEditor: nameEditor(m),
       lead: [toggle],
-      quick: [volume.node],
+      quick: [el('span', { className: 'card-volume' }, volume.node, panKnob(engine, m))],
       actions: [exportBtn, remove],
-      body: rows.length ? [...controls, grid] : controls,
+      body: [el('div', { className: 'groups' }, ...controls, ...(rows.length ? [group('pattern view', grid)] : []))],
       detail,
     });
     modulesEl.append(card.node);

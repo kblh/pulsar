@@ -30,7 +30,7 @@ export function createPedal({ fx, setParam, onToggle }) {
   foot.setAttribute('aria-label', 'effect on');
   foot.addEventListener('click', () => onToggle());
   const node = el('div', { className: `fx-controls pedal pedal-${fx.type}` },
-    el('div', { className: 'pedal-knobs' }, ...knobs.map((k) => k.node)),
+    el('div', { className: 'knobs' }, ...knobs.map((k) => k.node)),
     el('div', { className: 'pedal-plate' }, el('span', { className: 'pedal-name', textContent: look.title })),
     el('div', { className: 'pedal-foot' }, led, foot));
 

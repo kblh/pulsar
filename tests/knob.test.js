@@ -59,3 +59,9 @@ test('a range with a zero in it starts its arc at the zero, any other at the lef
 test('every effect has a name for its pedal', () => {
   for (const type of FX_TYPES) assert.ok(FX_PEDALS[type]?.title?.length > 0, type);
 });
+
+test('dragLength: a range with many steps needs a longer drag', async () => {
+  const { dragLength } = await import('../js/knob.js');
+  assert.equal(dragLength({ min: 0, max: 1, step: 0.05 }), KNOB_DRAG_PX);
+  assert.equal(dragLength({ min: 20, max: 300, step: 1 }), 420);
+});
