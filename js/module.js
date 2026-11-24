@@ -5,12 +5,13 @@ import { stepDuration, effectiveBpm } from './timing.js';
 import { mutationEvery } from './evolution.js';
 import { mutateMelody, randomMelody } from './melody.js';
 import { mutateRhythm, parsePattern, RHYTHM_PRESETS, lanePatternLength, remapPattern, positionsIn, stepAt, formatPattern, SUBS_MIN, SUBS_MAX } from './rhythm.js';
-import { playNote, playDrum, createDroneVoice, DEFAULT_ENV, DRUM_SOUNDS } from './synth.js';
+import { playNote, playDrum, createDroneVoice, startVoice, DEFAULT_ENV, DRUM_SOUNDS } from './synth.js';
 import { WAVES } from './options.js';
 
 let nextId = 1;
 const DRUMS = ['kick', 'snare', 'hat'];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const finiteNum = (v) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(Number(v));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const cleanMute = (raw) => Object.fromEntries(DRUMS.map((d) => [d, raw !== null && typeof raw === 'object' && raw[d] === true]));
 /** A sound index per drum; a missing, fractional or out-of-range one becomes the first sound. */
@@ -24,6 +25,24 @@ export const cleanRotation = (raw, voices) => Object.fromEntries(DRUMS.map((d) =
   const subs = lanePatternLength(voices?.[d]);
   return [d, Number.isInteger(n) ? ((n % subs) + subs) % subs : 0];
 }));
+const OSC_COUNT = 3;
+const OSC_DEFAULTS = [
+  { wave: 'triangle', level: 1, octave: 0, detune: 0 },
+  { wave: 'sawtooth', level: 0.4, octave: 0, detune: 7 },
+  { wave: 'square', level: 0, octave: -1, detune: 0 },
+];
+/** One oscillator of the live synth from untrusted values; whatever is unusable keeps `base`'s value. */
+export function cleanOsc(raw, base = OSC_DEFAULTS[0]) {
+  const o = raw !== null && typeof raw === 'object' ? raw : {};
+  return {
+    wave: WAVES.includes(o.wave) ? o.wave : base.wave,
+    level: finiteNum(o.level) ? clamp(Number(o.level), 0, 1) : base.level,
+    octave: finiteNum(o.octave) ? clamp(Math.round(Number(o.octave)), -2, 2) : base.octave,
+    detune: finiteNum(o.detune) ? clamp(Math.round(Number(o.detune)), -50, 50) : base.detune,
+  };
+}
+/** The three oscillators of the live synth; missing ones come from the defaults. */
+export const cleanOscs = (raw) => OSC_DEFAULTS.map((d, i) => cleanOsc(Array.isArray(raw) ? raw[i] : undefined, d));
 const evolved = (pattern) => ({ current: pattern, base: [...pattern] });
 
 const LIMITS = {
@@ -31,9 +50,9 @@ const LIMITS = {
   swing: [0, 1, true],
   randomize: [1, 10, false],
   rhythmMod: [1, 10, false],
+  octave: [-2, 2, false],
 };
 
-const finiteNum = (v) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(Number(v));
 
 /** The second oscillator's parameters; unusable values leave `params` as they are. */
 function applyOscParam(params, key, value) {
@@ -83,6 +102,11 @@ function applyParam(m, key, value) {
   } else if (key.startsWith('mute:')) {
     const v = key.slice(5);
     if (DRUMS.includes(v)) m.params.mute[v] = value === true;
+  } else if (key.startsWith('osc:')) {
+    const i = Number(key.slice(4));
+    if (Array.isArray(m.params.oscs) && Number.isInteger(i) && i >= 0 && i < OSC_COUNT) {
+      m.params.oscs = m.params.oscs.map((o, k) => (k === i ? cleanOsc(value, o) : o));
+    }
   } else if (key === 'rhythm') {
     m.params.rhythm = value;
     m.state.rhythm = evolved(parsePattern(value));
@@ -99,6 +123,7 @@ function applyParam(m, key, value) {
   } else if (key === 'pitchConfig') {
     m.params.pitchConfig = value;
     m.pool = buildPitchPool(value);
+    if (!m.state.melody) return; // the live synth has no melody to fit
     const max = m.pool.length - 1;
     const fit = (a) => a.map((i) => Math.min(i, max));
     m.state.melody = { current: fit(m.state.melody.current), base: fit(m.state.melody.base) };
@@ -239,6 +264,60 @@ export function createRhythmicModule(overrides = {}) {
     for (const d of DRUMS) {
       m.state.voices[d] = mutateRhythm(m.state.voices[d], { level: p.rhythmMod, mode: p.evolution }, Math.random);
     }
+  };
+  return m;
+}
+
+/** Number of pads of the live synth (a 4 x 4 grid). */
+export const PADS = 16;
+
+/** The MIDI note of a pad: the scale's notes in ascending order from the bottom left, repeating an octave higher. */
+export function padNote(pitchConfig, pad, octave = 0) {
+  const degrees = buildPitchPool({ ...pitchConfig, octaves: 1 });
+  const n = degrees.length;
+  const note = degrees[pad % n] + 12 * Math.floor(pad / n) + 12 * octave;
+  return clamp(note, 0, 127);
+}
+
+export function createSynthModule(overrides = {}) {
+  const params = {
+    env: { ...DEFAULT_ENV, a: 0.02, r: 0.4 },
+    pitchConfig: { mode: 'scale', root: 'C', scale: 'pentatonicMinor', octaves: 1 },
+    octave: 0,
+    ...overrides,
+    oscs: cleanOscs(overrides.oscs),
+  };
+  params.octave = clamp(Math.round(Number(params.octave)) || 0, -2, 2);
+  const voices = new Map(); // pad -> the sounding voice
+  const m = makeModule('synth', params, { held: voices }, buildPitchPool(params.pitchConfig), () => {});
+  let audio = null;
+  m.attach = (ctx, dest) => { audio = { ctx, dest }; };
+  m.tick = () => {}; // nothing is scheduled: the player is the clock
+  m.padNote = (pad) => padNote(m.params.pitchConfig, pad, m.params.octave);
+  m.noteOn = (pad) => {
+    if (!audio || m.disposed || !m.running || !Number.isInteger(pad) || pad < 0 || pad >= PADS) return;
+    voices.get(pad)?.release();
+    if (voices.size >= PADS * 2) return;
+    voices.set(pad, startVoice(audio.ctx, audio.dest, { freq: midiToFreq(m.padNote(pad)), oscs: m.params.oscs, env: m.params.env }));
+  };
+  m.noteOff = (pad) => {
+    voices.get(pad)?.release();
+    voices.delete(pad);
+  };
+  m.releaseAll = () => {
+    for (const v of voices.values()) v.release();
+    voices.clear();
+  };
+  const stop = m.stop;
+  m.stop = () => {
+    m.releaseAll();
+    stop();
+  };
+  const dispose = m.dispose;
+  m.dispose = () => {
+    for (const v of voices.values()) v.kill();
+    voices.clear();
+    dispose();
   };
   return m;
 }

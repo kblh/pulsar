@@ -8,6 +8,7 @@ export function addMenuItems({ hasWorklet, hasSequence }) {
     { id: 'melodic', icon: 'note', label: 'melodic' },
     { id: 'rhythmic', icon: 'drum', label: 'rhythmic' },
     { id: 'drone', icon: 'wave', label: 'drone' },
+    { id: 'synth', icon: 'pads', label: 'synth' },
   ];
   for (const type of FX_TYPES) {
     if (FX_NEEDS_WORKLET.includes(type) && !hasWorklet) continue;

@@ -25,7 +25,8 @@ import { createPedal } from './pedal.js';
 import { SLOTS } from './sends.js';
 import { mountSequenceCard } from './sequence-ui.js';
 import { createDetail } from './detail.js';
-import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
+import { createMelodicModule, createRhythmicModule, createDroneModule, createSynthModule } from './module.js';
+import { createPlayPads } from './play-pads.js';
 
 
 function el(tag, props = {}, ...children) {
@@ -102,7 +103,7 @@ function gridRow(name, getPattern, getPitches) {
   };
 }
 
-function pitchRows(m, { withNotes }) {
+function pitchRows(m, { withNotes, withOctaves = true }) {
   const cfg = () => ({ ...m.params.pitchConfig });
   const setCfg = (k) => (v) => m.setParam('pitchConfig', { ...cfg(), notes: cfg().notes ?? 'C4 E4 G4 A4', [k]: k === 'octaves' ? Number(v) : v });
   const c = m.params.pitchConfig;
@@ -118,7 +119,7 @@ function pitchRows(m, { withNotes }) {
     field('pitch', mode.node),
     field('root and scale', el('div', { className: 'pair' },
       select(ROOTS, c.root ?? 'C', setCfg('root')), select(Object.keys(SCALES), c.scale ?? 'pentatonicMinor', setCfg('scale')))),
-    knobs(octaves.node),
+    ...(withOctaves ? [knobs(octaves.node)] : []),
     ...(withNotes ? [field('notes', text(c.notes ?? 'C4 E4 G4 A4', setCfg('notes')))] : []),
   ];
   let shown = c.mode;
@@ -307,6 +308,52 @@ function rootPicker(m) {
     onInput: (o) => apply(tone.value, o),
   });
   return [field('base tone', tone), knobs(octave.node)];
+}
+
+/** The live synth: pads to play, three oscillators, an envelope and a scale. */
+function synthControls(m, live) {
+  const pads = createPlayPads({
+    label: (i) => midiName(m.padNote(i)),
+    onDown: (i) => m.noteOn(i),
+    onUp: (i) => m.noteOff(i),
+  });
+  live.push({ update: () => { pads.setLabels(); if (!m.running) pads.releaseAll(); } });
+  const oscRow = (i) => {
+    const o = () => m.params.oscs[i];
+    const set = (key) => (v) => m.setParam(`osc:${i}`, { [key]: v });
+    const knob = (label, key, opts) => {
+      const k = createKnob({
+        ...opts, label, ariaLabel: `osc ${i + 1} ${label}`, value: o()[key],
+        onInput: (v) => {
+          set(key)(v);
+          k.set(o()[key]);
+        },
+      });
+      return k.node;
+    };
+    return field(`osc ${i + 1}`, el('div', { className: 'osc-row' },
+      seg(waveOptions, o().wave, `osc ${i + 1} wave`, set('wave')),
+      knobs(
+        knob('level', 'level', { min: 0, max: 1, step: 0.05, format: pct, defaultValue: i === 0 ? 1 : 0 }),
+        knob('octave', 'octave', { min: -2, max: 2, step: 1, format: (v) => (v > 0 ? `+${v}` : String(v)), defaultValue: 0 }),
+        knob('detune', 'detune', { min: -50, max: 50, step: 1, format: formatCents, defaultValue: 0 }),
+      )));
+  };
+  const envelope = createEnvelopeEditor({
+    env: m.params.env,
+    onChange: (partial) => {
+      m.setParam('env', partial);
+      envelope.set(m.params.env);
+    },
+  });
+  const pitch = pitchRows(m, { withNotes: true, withOctaves: false });
+  live.push({ update: () => pitch.syncMode() });
+  return [
+    group('play', pads.node, knobs(paramKnob('octave', m, 'octave', { min: -2, max: 2, step: 1, format: (v) => (v > 0 ? `+${v}` : String(v)), defaultValue: 0 }))),
+    group('oscillators', ...[0, 1, 2].map(oscRow)),
+    group('envelope', envelope.node),
+    group('scale', ...pitch),
+  ];
 }
 
 function droneControls(m) {
@@ -605,7 +652,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     const sends = Array.from({ length: SLOTS }, (_, slot) => sendRow(engine, m, slot));
     sendFills.set(m.id, sends.map((x) => x.fill));
     const controls = [
-      ...{ melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls }[m.type](m, live),
+      ...{ melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls, synth: synthControls }[m.type](m, live),
       group('sends', ...sends.map((x) => x.row)),
     ];
     const card = createCard({
@@ -660,6 +707,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     melodic: () => add(createMelodicModule),
     rhythmic: () => add(createRhythmicModule),
     drone: () => add(createDroneModule),
+    synth: () => add(createSynthModule),
     sequence: () => {
       let seq;
       try {

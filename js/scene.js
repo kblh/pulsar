@@ -4,17 +4,17 @@ import { SLOTS } from './sends.js';
 import { SCALES } from './scales.js';
 import { DEFAULT_ENV } from './synth.js';
 import { WAVES, ROOTS } from './options.js';
-import { createMelodicModule, createRhythmicModule, createDroneModule, cleanSounds, cleanRotation } from './module.js';
+import { createMelodicModule, createRhythmicModule, createDroneModule, createSynthModule, cleanOscs, cleanSounds, cleanRotation } from './module.js';
 import { cleanDuration, MAX_PARTS } from './sequence.js';
 import { cleanTempo, DEFAULT_TEMPO } from './timing.js';
 
 export const NAME_MAX = 24;
-const MODULE_TYPES = ['melodic', 'rhythmic', 'drone'];
+const MODULE_TYPES = ['melodic', 'rhythmic', 'drone', 'synth'];
 export const MAX_MODULES = 64;
 export const MAX_EFFECTS = 32;
 const MAX_PATTERN = 64;
 export const DEFAULT_SEND_LEVEL = 0.3;
-const NUMBER_KEYS = { melodic: ['bpm', 'swing', 'randomize', 'rhythmMod'], rhythmic: ['bpm', 'swing', 'rhythmMod'], drone: ['rate', 'maxExtra', 'fade'] };
+const NUMBER_KEYS = { melodic: ['bpm', 'swing', 'randomize', 'rhythmMod'], rhythmic: ['bpm', 'swing', 'rhythmMod'], drone: ['rate', 'maxExtra', 'fade'], synth: [] };
 
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
@@ -107,15 +107,21 @@ function cleanModuleParams(type, p) {
   const out = {};
   if (!isObj(p)) return out;
   for (const k of NUMBER_KEYS[type]) if (isNum(p[k])) out[k] = p[k];
-  if (WAVES.includes(p.wave) && type !== 'rhythmic') out.wave = p.wave;
-  if ((p.evolution === 'drift' || p.evolution === 'walk') && type !== 'drone') out.evolution = p.evolution;
+  if (WAVES.includes(p.wave) && type !== 'rhythmic' && type !== 'synth') out.wave = p.wave;
+  if ((p.evolution === 'drift' || p.evolution === 'walk') && type !== 'drone' && type !== 'synth') out.evolution = p.evolution;
   if (type !== 'rhythmic') {
     const pc = cleanPitchConfig(p.pitchConfig);
     if (pc) out.pitchConfig = pc;
     // The second oscillator; a scene without these keys keeps the module's defaults (mix 0 = one oscillator).
-    if (WAVES.includes(p.wave2)) out.wave2 = p.wave2;
-    if (isNum(p.mix)) out.mix = clamp(p.mix, 0, 1);
-    if (isNum(p.detune)) out.detune = clamp(Math.round(p.detune), -50, 50);
+    if (type !== 'synth' && WAVES.includes(p.wave2)) out.wave2 = p.wave2;
+    if (type !== 'synth' && isNum(p.mix)) out.mix = clamp(p.mix, 0, 1);
+    if (type !== 'synth' && isNum(p.detune)) out.detune = clamp(Math.round(p.detune), -50, 50);
+  }
+  if (type === 'synth') {
+    if (Array.isArray(p.oscs)) out.oscs = cleanOscs(p.oscs);
+    if (isNum(p.octave)) out.octave = clamp(Math.round(p.octave), -2, 2);
+    const env = cleanEnv(p.env);
+    if (env) out.env = env;
   }
   if (type === 'melodic') {
     if (typeof p.rhythm === 'string') out.rhythm = p.rhythm.slice(0, MAX_PATTERN);
@@ -214,7 +220,7 @@ export function validateScene(data) {
   return { scene: { version: 1, effects, modules, ...(sequence ? { sequence } : {}), ...(tempo ? { tempo } : {}) }, problems };
 }
 
-const FACTORIES = { melodic: createMelodicModule, rhythmic: createRhythmicModule, drone: createDroneModule };
+const FACTORIES = { melodic: createMelodicModule, rhythmic: createRhythmicModule, drone: createDroneModule, synth: createSynthModule };
 
 function applyParams(m, params) {
   for (const [key, value] of Object.entries(params)) {

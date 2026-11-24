@@ -8,7 +8,7 @@ const ids = (o) => addMenuItems(o).map((i) => i.id);
 
 test('the add menu lists modules, effects, the sequence and import in that order', () => {
   const list = ids({ hasWorklet: true, hasSequence: false });
-  assert.deepEqual(list.slice(0, 3), ['melodic', 'rhythmic', 'drone']);
+  assert.deepEqual(list.slice(0, 4), ['melodic', 'rhythmic', 'drone', 'synth']);
   for (const t of FX_TYPES) assert.ok(list.includes(`fx:${t}`), t);
   assert.equal(list.at(-1), 'import');
   assert.equal(list.at(-2), 'sequence');

@@ -15,6 +15,7 @@ export const ICON_PATHS = {
   new: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M12 12v6M9 15h6',
   next: 'M6 5l9 7-9 7zM18 5v14',
   note: 'M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
+  pads: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
   play: 'M7 4l13 8-13 8z',
   plus: 'M12 5v14M5 12h14',
   prev: 'M18 5l-9 7 9 7zM6 5v14',

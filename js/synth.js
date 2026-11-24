@@ -272,3 +272,58 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix
     },
   };
 }
+
+/**
+ * A held note for live playing: up to three oscillators (`{ wave, level, octave, detune }`, a level of 0 is off) through
+ * one ADSR envelope. It sounds until `release()`; the release time comes from `env.r`. Returns `{ release, kill }`.
+ */
+export function startVoice(ctx, dest, { freq, oscs, env = DEFAULT_ENV, peak = 0.5 }) {
+  const { a, d, s, r } = env;
+  const time = ctx.currentTime;
+  const gain = ctx.createGain();
+  const active = oscs.filter((o) => o.level > 0);
+  const total = active.reduce((sum, o) => sum + o.level, 0) || 1;
+  const nodes = [gain];
+  const sources = active.map((o) => {
+    const osc = ctx.createOscillator();
+    const level = ctx.createGain();
+    osc.type = o.wave;
+    osc.frequency.value = freq * Math.pow(2, o.octave ?? 0);
+    osc.detune.value = detuneOf(o.detune);
+    level.gain.value = (o.level / total) * waveGain(o.wave); // the sum of the levels stays 1: more oscillators are not louder
+    osc.connect(level).connect(gain);
+    osc.start(time);
+    nodes.push(osc, level);
+    return osc;
+  });
+  const top = peak;
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.linearRampToValueAtTime(top, time + Math.max(0.003, a));
+  gain.gain.linearRampToValueAtTime(Math.max(0.0001, top * s), time + Math.max(0.003, a) + d);
+  gain.connect(dest);
+  let done = false;
+  const free = () => nodes.forEach((n) => n.disconnect());
+  if (sources.length) sources[0].onended = free;
+  else free();
+  return {
+    release() {
+      if (done) return;
+      done = true;
+      const now = ctx.currentTime;
+      const tail = Math.max(0.03, r);
+      const at = gain.gain.value; // where the envelope is now, so a release in the attack does not jump
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(Math.max(0.0001, at), now);
+      gain.gain.setTargetAtTime(0, now, tail / 4);
+      for (const o of sources) o.stop(now + tail * 1.6 + 0.05);
+    },
+    kill() {
+      if (done) return;
+      done = true;
+      const now = ctx.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setTargetAtTime(0, now, 0.01);
+      for (const o of sources) o.stop(now + 0.08);
+    },
+  };
+}

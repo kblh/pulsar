@@ -107,6 +107,7 @@ export function createEngine() {
       const mix = connectMix(ctx, m.out, master);
       mixes.set(m.id, mix);
       routing.attach(m, mix);
+      m.attach?.(ctx, m.out); // a module played by hand (the synth) schedules nothing itself
       modules.push(m);
       transport.register(m);
       syncClock();
