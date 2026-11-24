@@ -1,7 +1,7 @@
-const CACHE = 'pulsar-v39';
+const CACHE = 'pulsar-v40';
 const FILES = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest',
-  'icons/icon-192.png', 'icons/icon-512.png',
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'js/main.js', 'js/ui.js', 'js/engine.js', 'js/clock.js', 'js/clock.worker.js',
   'js/module.js', 'js/synth.js', 'js/track.js', 'js/timing.js', 'js/evolution.js',
   'js/melody.js', 'js/rhythm.js', 'js/scales.js', 'js/rng.js', 'js/drone.js', 'js/transport.js', 'js/mix.js', 'js/fx.js', 'js/sends.js',
