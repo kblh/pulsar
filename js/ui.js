@@ -23,6 +23,8 @@ import { createEnvelopeEditor } from './envelope.js';
 import { splitRoot, joinRoot, formatCents } from './hud.js';
 import { createPedal } from './pedal.js';
 import { SLOTS } from './sends.js';
+import { FX_TYPES, FX_NEEDS_WORKLET } from './fx.js';
+import { FX_LABELS } from './fx-fields.js';
 import { mountSequenceCard } from './sequence-ui.js';
 import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule, createSynthModule } from './module.js';
@@ -262,7 +264,7 @@ function nameEditor(obj) {
 }
 
 /** One send slot: a target select (rebuilt by fill() when effects come and go) and a level knob. */
-function sendRow(engine, m, slot) {
+function sendRow(engine, m, slot, newEffect) {
   const sel = el('select');
   const fill = () => {
     sel.replaceChildren(
@@ -284,7 +286,21 @@ function sendRow(engine, m, slot) {
       level.set(m.sends[slot].level);
     },
   });
-  return { row: field(`send ${slot + 1}`, el('div', { className: 'send' }, sel, level.node)), fill };
+  // A new effect of the chosen type, created and put into this slot in one go.
+  const fresh = el('select', { className: 'send-new' });
+  fresh.setAttribute('aria-label', `send ${slot + 1} new effect`);
+  const types = FX_TYPES.filter((t) => !FX_NEEDS_WORKLET.includes(t) || engine.hasWorklet());
+  fresh.append(el('option', { value: '', textContent: '+' }), ...types.map((t) => el('option', { value: t, textContent: FX_LABELS[t] ?? t })));
+  fresh.onchange = async () => {
+    const type = fresh.value;
+    fresh.value = '';
+    if (!type) return;
+    const fx = await newEffect(type);
+    if (!fx) return;
+    engine.setSend(m, slot, { fx: fx.id });
+    fill();
+  };
+  return { row: field(`send ${slot + 1}`, el('div', { className: 'send' }, sel, fresh, level.node)), fill };
 }
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
@@ -649,7 +665,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     }
     const live = []; // updaters of the interactive controls (step grids, keyboard)
     const grid = el('div', { className: 'grid' }, ...rows.map((r) => r.node));
-    const sends = Array.from({ length: SLOTS }, (_, slot) => sendRow(engine, m, slot));
+    const sends = Array.from({ length: SLOTS }, (_, slot) => sendRow(engine, m, slot, addEffect));
     sendFills.set(m.id, sends.map((x) => x.fill));
     const controls = [
       ...{ melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls, synth: synthControls }[m.type](m, live),
@@ -680,9 +696,11 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     await engine.resume();
     await engine.ready; // the bitcrusher needs its worklet
     try {
-      addFxPanel(engine.addEffect(type));
+      const fx = engine.addEffect(type);
+      addFxPanel(fx);
+      return fx;
     } catch {
-      /* an effect this browser cannot build (the menu does not offer it) */
+      return null; // an effect this browser cannot build (the menu does not offer it)
     }
   }
 

@@ -151,6 +151,7 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 .field > .hud-slider { flex: none; }
 .pair, .send { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; align-self: stretch; }
 .field > .hud-slider, .pair, .send { width: 100%; max-width: 360px; align-self: center; }
+.send-new { flex: 0 0 52px; }
 .pair select { flex: 0 1 150px; }
 .send select { flex: 0 1 200px; }
 .pair select, .send select { text-align: center; text-align-last: center; }
