@@ -16,7 +16,7 @@ function memory(initial) {
   };
 }
 
-const sceneOf = (...mods) => serializeScene({ modules: mods.map((m) => Object.assign(m, { sends: [0, 1, 2].map(() => ({ fx: null, level: 0.3 })) })), effects: [] });
+const sceneOf = (...mods) => serializeScene({ modules: mods.map((m) => Object.assign(m, { sends: Array.from({ length: 5 }, (_, i) => i).map(() => ({ fx: null, level: 0.3 })) })), effects: [] });
 const clock = () => { let t = 1000; return () => (t += 10); };
 
 test('save then list/get round-trips a scene', () => {

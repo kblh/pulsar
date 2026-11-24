@@ -1,7 +1,8 @@
 import { createEffect } from './fx.js';
 import { clampLevel } from './mix.js';
 
-const SLOTS = 3;
+/** Effect slots per module. */
+export const SLOTS = 5;
 const DEFAULT_LEVEL = 0.3;
 const RETIRE_MS = 150; // long enough for a send's ramp to reach silence
 const TAIL_PAD_MS = 100;

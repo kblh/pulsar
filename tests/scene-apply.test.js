@@ -21,7 +21,7 @@ function fakeEngine({ stopped = false, failAddModule = [], failSetVolume = [], f
     },
     addModule(m) {
       if (failAddModule.includes(m.type)) throw new Error('boom');
-      m.sends = [0, 1, 2].map(() => ({ fx: null, level: 0.3 }));
+      m.sends = Array.from({ length: 5 }, (_, i) => i).map(() => ({ fx: null, level: 0.3 }));
       m.volume = 1;
       m.pan = 0;
       e.modules.push(m);
@@ -187,7 +187,7 @@ test('a serialized melodic and drone module round-trips its osc 2 settings throu
   m.setParam('mix', 0.35); m.setParam('wave2', 'triangle'); m.setParam('detune', 9);
   const d = createDroneModule();
   d.setParam('mix', 0.6); d.setParam('wave2', 'square'); d.setParam('detune', -20);
-  for (const x of [m, d]) { x.sends = [0, 1, 2].map(() => ({ fx: null, level: 0.3 })); x.volume = 1; x.pan = 0; }
+  for (const x of [m, d]) { x.sends = Array.from({ length: 5 }, (_, i) => i).map(() => ({ fx: null, level: 0.3 })); x.volume = 1; x.pan = 0; }
   const back = validateScene(JSON.parse(JSON.stringify(serializeScene({ modules: [m, d], effects: [] })))).scene;
   assert.deepEqual([back.modules[0].params.mix, back.modules[0].params.wave2, back.modules[0].params.detune], [0.35, 'triangle', 9]);
   assert.deepEqual([back.modules[1].params.mix, back.modules[1].params.wave2, back.modules[1].params.detune], [0.6, 'square', -20]);
@@ -237,9 +237,9 @@ test('addModuleFromData builds one module from cleaned data: params, name, volum
   assert.equal(e.modules[0], m);
   assert.deepEqual([m.type, m.name, m.volume, m.pan, m.running], ['drone', 'pad', 0.4, -0.5, false]);
   assert.deepEqual([m.params.rate, m.params.mix], [7, 0.5]);
-  assert.deepEqual(m.sends.map((x) => [x.fx, x.level]), [['fx1', 0.8], [null, 0.2], [null, 0.1]]);
+  assert.deepEqual(m.sends.map((x) => [x.fx, x.level]), [['fx1', 0.8], [null, 0.2], [null, 0.1], [null, 0.3], [null, 0.3]]);
   const plain = addModuleFromData(fakeEngine(), cleanModule({ type: 'melodic' }));
-  assert.deepEqual(plain.sends.map((x) => x.fx), [null, null, null], 'without effects every send stays empty');
+  assert.deepEqual(plain.sends.map((x) => x.fx), [null, null, null, null, null], 'without effects every send stays empty');
 });
 
 test('addModuleFromData removes a module it could not finish and throws', () => {
@@ -253,7 +253,7 @@ test('addModuleFromData removes a module it could not finish and throws', () => 
 
 test('addModuleFromData switches a module off with setRunning, so a module that the transport already stopped is not started', () => {
   const e = fakeEngine();
-  e.addModule = (m) => { m.sends = [0, 1, 2].map(() => ({ fx: null, level: 0.3 })); m.volume = 1; m.pan = 0; m.running = false; e.modules.push(m); }; // [stop all] stopped it on registration
+  e.addModule = (m) => { m.sends = Array.from({ length: 5 }, (_, i) => i).map(() => ({ fx: null, level: 0.3 })); m.volume = 1; m.pan = 0; m.running = false; e.modules.push(m); }; // [stop all] stopped it on registration
   const m = addModuleFromData(e, cleanModule({ type: 'drone', running: false }));
   assert.equal(m.running, false);
 });

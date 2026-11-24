@@ -22,6 +22,7 @@ import { createKnob } from './knob.js';
 import { createEnvelopeEditor } from './envelope.js';
 import { splitRoot, joinRoot, formatCents } from './hud.js';
 import { createPedal } from './pedal.js';
+import { SLOTS } from './sends.js';
 import { mountSequenceCard } from './sequence-ui.js';
 import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
@@ -601,7 +602,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     }
     const live = []; // updaters of the interactive controls (step grids, keyboard)
     const grid = el('div', { className: 'grid' }, ...rows.map((r) => r.node));
-    const sends = [0, 1, 2].map((slot) => sendRow(engine, m, slot));
+    const sends = Array.from({ length: SLOTS }, (_, slot) => sendRow(engine, m, slot));
     sendFills.set(m.id, sends.map((x) => x.fill));
     const controls = [
       ...{ melodic: melodicControls, rhythmic: rhythmicControls, drone: droneControls }[m.type](m, live),

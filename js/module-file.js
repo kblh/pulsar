@@ -1,5 +1,6 @@
 import { exportFilename, MAX_FILE_BYTES } from './scene-file.js';
 import { cleanModule, DEFAULT_SEND_LEVEL } from './scene.js';
+import { SLOTS } from './sends.js';
 
 export const MODULE_FILE_SUFFIX = '.pulsar-module.json';
 
@@ -12,7 +13,7 @@ export const moduleToFile = (moduleData) => JSON.stringify({ pulsar: 'module', m
 
 /**
  * Reads a module file. Nothing here throws. `entries` has one cleaned module or none, `problems` says why.
- * Sends are not part of a module file: the imported module starts with three empty slots.
+ * Sends are not part of a module file: the imported module starts with empty slots.
  */
 export function parseModuleFile(text) {
   const fail = (problem) => ({ entries: [], problems: [problem] });
@@ -32,6 +33,6 @@ export function parseModuleFile(text) {
   else return fail('not a Pulsar module file');
   const module = cleanModule(candidate);
   if (!module) return fail('no usable module in it (unknown type)');
-  module.sends = Array.from({ length: 3 }, () => ({ fx: null, level: DEFAULT_SEND_LEVEL }));
+  module.sends = Array.from({ length: SLOTS }, () => ({ fx: null, level: DEFAULT_SEND_LEVEL }));
   return { entries: [module], problems: [] };
 }

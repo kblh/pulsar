@@ -28,10 +28,10 @@ function sample() {
   mel.name = 'bass';
   mel.volume = 0.7;
   mel.pan = -0.3;
-  mel.sends = [{ fx: 'fx7', level: 0.5 }, { fx: null, level: 0.3 }, { fx: 'fx3', level: 0.9 }];
-  rhy.sends = [{ fx: 'fx99', level: 0.2 }, { fx: null, level: 0.3 }, { fx: null, level: 0.3 }];
+  mel.sends = [{ fx: 'fx7', level: 0.5 }, { fx: null, level: 0.3 }, { fx: 'fx3', level: 0.9 }, { fx: null, level: 0.3 }, { fx: null, level: 0.3 }];
+  rhy.sends = [{ fx: 'fx99', level: 0.2 }, { fx: null, level: 0.3 }, { fx: null, level: 0.3 }, { fx: null, level: 0.3 }, { fx: null, level: 0.3 }];
   dro.running = false;
-  dro.sends = [0, 1, 2].map(() => ({ fx: null, level: 0.3 })); // attached modules always have three slots
+  dro.sends = Array.from({ length: 5 }, (_, i) => i).map(() => ({ fx: null, level: 0.3 })); // attached modules always have five slots
   return { modules: [mel, rhy, dro], effects };
 }
 
@@ -42,7 +42,7 @@ test('serializeScene is JSON-stable and maps sends to effect indexes', () => {
   assert.equal(scene.version, 1);
   assert.deepEqual(scene.effects.map((e) => e.type), ['delay', 'reverb']);
   assert.deepEqual(scene.modules.map((m) => m.type), ['melodic', 'rhythmic', 'drone']);
-  assert.deepEqual(scene.modules[0].sends.map((s) => s.fx), [1, null, 0]);
+  assert.deepEqual(scene.modules[0].sends.map((s) => s.fx), [1, null, 0, null, null]);
   assert.equal(scene.modules[1].sends[0].fx, null);
   assert.equal(scene.modules[0].name, 'bass');
   assert.equal(scene.modules[0].volume, 0.7);
@@ -130,18 +130,18 @@ test('validateScene clamps or drops bad parameter values', () => {
   assert.equal(d.fade, 5);
 });
 
-test('validateScene limits sends to three and remaps indexes after dropped effects', () => {
+test('validateScene limits sends to five and remaps indexes after dropped effects', () => {
   const { scene } = validateScene({
     version: 1,
     effects: [{ type: 'flanger', params: {} }, { type: 'delay', params: {} }, { type: 'reverb', params: {} }],
     modules: [
-      mod({ sends: [{ fx: 0, level: 0.5 }, { fx: 1, level: 2 }, { fx: 2, level: 0.1 }, { fx: 2, level: 0.1 }, { fx: 2, level: 0.1 }] }),
+      mod({ sends: [{ fx: 0, level: 0.5 }, { fx: 1, level: 2 }, { fx: 2, level: 0.1 }, { fx: 2, level: 0.1 }, { fx: 2, level: 0.1 }, { fx: 0, level: 0.9 }] }),
       mod({ sends: [{ fx: 99, level: 0.5 }] }),
     ],
   });
   assert.equal(scene.effects.length, 2);
-  assert.deepEqual(scene.modules[0].sends, [{ fx: null, level: 0.5 }, { fx: 0, level: 1 }, { fx: 1, level: 0.1 }]);
-  assert.deepEqual(scene.modules[1].sends, [{ fx: null, level: 0.5 }, { fx: null, level: 0.3 }, { fx: null, level: 0.3 }]);
+  assert.deepEqual(scene.modules[0].sends, [{ fx: null, level: 0.5 }, { fx: 0, level: 1 }, { fx: 1, level: 0.1 }, { fx: 1, level: 0.1 }, { fx: 1, level: 0.1 }]);
+  assert.deepEqual(scene.modules[1].sends, [{ fx: null, level: 0.5 }, { fx: null, level: 0.3 }, { fx: null, level: 0.3 }, { fx: null, level: 0.3 }, { fx: null, level: 0.3 }]);
 });
 
 test('serializeScene records modules stopped by [stop all] as running', () => {

@@ -21,10 +21,10 @@ function setup(t) {
 }
 const targets = (g) => g.gain.calls.filter((c) => c[0] === 'target');
 
-test('attach gives three empty slots with level 0.3', (t) => {
+test('attach gives five empty slots with level 0.3', (t) => {
   const { addModule } = setup(t);
   const { m } = addModule();
-  assert.deepEqual(m.sends, [0, 1, 2].map(() => ({ fx: null, level: 0.3 })));
+  assert.deepEqual(m.sends, Array.from({ length: 5 }, (_, i) => i).map(() => ({ fx: null, level: 0.3 })));
 });
 
 test('addEffect connects the output to master and numbers effects', (t) => {
@@ -94,12 +94,12 @@ test('two slots of one module can target the same effect', (t) => {
   for (const g of gains) assert.ok(g.connections.includes(fx.input));
 });
 
-test('slot index outside 0..2 and unknown fx id are ignored', (t) => {
+test('slot index outside 0..4 and unknown fx id are ignored', (t) => {
   const { ctx, routing, addModule } = setup(t);
   const { m, sendGains } = addModule();
   const fx = routing.addEffect('delay');
   const count = ctx.nodes.length;
-  for (const slot of [3, -1, 1.5, NaN, undefined]) routing.setSend(m, slot, { fx: fx.id });
+  for (const slot of [5, -1, 1.5, NaN, undefined]) routing.setSend(m, slot, { fx: fx.id });
   routing.setSend(m, 0, { fx: 'fx99' });
   assert.equal(ctx.nodes.length, count);
   assert.equal(sendGains().length, 0);

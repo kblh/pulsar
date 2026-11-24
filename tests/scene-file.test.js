@@ -4,7 +4,7 @@ import { sceneToFile, scenesToFile, parseSceneFile, uniqueName, exportFilename, 
 import { serializeScene, validateScene } from '../js/scene.js';
 import { createMelodicModule, createDroneModule, createRhythmicModule } from '../js/module.js';
 
-const slots = () => [0, 1, 2].map(() => ({ fx: null, level: 0.3 }));
+const slots = () => Array.from({ length: 5 }, (_, i) => i).map(() => ({ fx: null, level: 0.3 }));
 function sampleScene(...makers) {
   const modules = (makers.length ? makers : [createMelodicModule, createDroneModule]).map((f) => Object.assign(f(), { sends: slots() }));
   return validateScene(serializeScene({ modules, effects: [] })).scene;

@@ -1,5 +1,6 @@
 import { clampFxParam, FX_TYPES } from './fx.js';
 import { clampVolume, clampPan, clampLevel } from './mix.js';
+import { SLOTS } from './sends.js';
 import { SCALES } from './scales.js';
 import { DEFAULT_ENV } from './synth.js';
 import { WAVES, ROOTS } from './options.js';
@@ -9,7 +10,6 @@ import { cleanTempo, DEFAULT_TEMPO } from './timing.js';
 
 export const NAME_MAX = 24;
 const MODULE_TYPES = ['melodic', 'rhythmic', 'drone'];
-const SLOTS = 3;
 export const MAX_MODULES = 64;
 export const MAX_EFFECTS = 32;
 const MAX_PATTERN = 64;

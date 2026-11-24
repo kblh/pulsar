@@ -5,7 +5,7 @@ import { serializeModule, validateScene } from '../js/scene.js';
 import { MAX_FILE_BYTES } from '../js/scene-file.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from '../js/module.js';
 
-const sends = () => [0, 1, 2].map(() => ({ fx: null, level: 0.3 }));
+const sends = () => Array.from({ length: 5 }, (_, i) => i).map(() => ({ fx: null, level: 0.3 }));
 const emptySends = sends();
 
 test('the suffix and the file name are safe and never empty', () => {
@@ -69,7 +69,7 @@ test('a bare module object is accepted too', () => {
   assert.equal(entries[0].type, 'melodic');
 });
 
-test('sends in the file are ignored: the imported module has three empty slots', () => {
+test('sends in the file are ignored: the imported module has five empty slots', () => {
   const data = { ...serializeModule(createDroneModule()), sends: [{ fx: 0, level: 0.9 }, { fx: 1, level: 1 }, { fx: 2, level: 0 }] };
   const { entries } = parseModuleFile(JSON.stringify({ pulsar: 'module', module: data }));
   assert.deepEqual(entries[0].sends, emptySends);
