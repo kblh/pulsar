@@ -1,6 +1,7 @@
 import { createEngine } from './engine.js';
 import { mountUi } from './ui.js';
 import { createSceneStore } from './scene-store.js';
+import { setupBackgroundAudio } from './background.js';
 import { loadAccent, saveAccent, applyTheme } from './theme.js';
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -14,6 +15,9 @@ const themeMeta = document.querySelector('meta[name=theme-color]');
 let accent = loadAccent(storage);
 applyTheme(document.documentElement, themeMeta, accent);
 
+const engine = createEngine();
+setupBackgroundAudio(engine);
+
 mountUi({
   accent: {
     get: () => accent,
@@ -25,7 +29,7 @@ mountUi({
   },
   store: createSceneStore(storage),
   scenePanelEl: document.getElementById('scene-panel'),
-  engine: createEngine(),
+  engine,
   effectsEl: document.getElementById('effects'),
   modulesEl: document.getElementById('modules'),
   sequenceEl: document.getElementById('sequence'),

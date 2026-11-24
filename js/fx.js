@@ -1,10 +1,6 @@
-import { mulberry32 } from './rng.js';
 import { hasWorklet } from './worklet.js';
 
 const RAMP = 0.02; // seconds; parameter changes never jump
-const REBUILD_DEBOUNCE_MS = 150;
-const RETIRE_MS = 300;
-const FADE = 0.05;
 const MAX_TAIL_MS = 20000;
 
 export const FX_DEFAULTS = {
@@ -38,21 +34,6 @@ function accept(type, params) {
     if (v !== null) p[k] = v;
   }
   return p;
-}
-
-/** Decaying noise, one channel each; `damping` darkens it with a one-pole lowpass. */
-export function makeImpulse(decay, damping, sampleRate, rng) {
-  const len = Math.ceil(decay * sampleRate);
-  const a = 1 - 0.97 * damping;
-  return [0, 1].map(() => {
-    const out = new Float32Array(len);
-    let y = 0;
-    for (let i = 0; i < len; i++) {
-      y += a * ((rng() * 2 - 1) - y);
-      out[i] = y * Math.exp((-6.9 * i) / len);
-    }
-    return out;
-  });
 }
 
 /**
@@ -144,61 +125,98 @@ export function createDelay(ctx, params) {
   };
 }
 
+// Algorithmic reverb (Freeverb): parallel feedback combs into series allpasses, one chain per channel. A convolver with
+// a decaying-noise impulse sounded similar but cost 9% (decay 2.5 s) to 37% (10 s) of real time on a desktop, 70% while
+// a rebuild had two running, which on a phone ends in dropouts that sound like crackle. This costs about 4% whatever the
+// decay, and every parameter is a plain ramped AudioParam: no rebuild, no crossfade, no impulse built on the main thread.
+const REVERB_COMBS = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617]; // delay lengths in samples at 44.1 kHz
+const REVERB_ALLPASS = [556, 441, 341, 225];
+const REVERB_SPREAD = 23; // samples: the right channel's delays are longer by this, which decorrelates the channels
+const REVERB_RATE = 44100;
+const REVERB_ALLPASS_GAIN = 0.5;
+const REVERB_SMOOTH = 0.1; // seconds (time constant) for decay and damping moves
+const REVERB_LEVEL = 0.068; // input scale: keeps the wet level near the old convolver's at the defaults
+const REVERB_REF_DECAY = FX_DEFAULTS.reverb.decay;
+
+/** Cutoff of the lowpass in each comb's loop: 12 kHz at damping 0 down to 1.5 kHz at 1. */
+export const reverbDampHz = (damping) => 12000 * (1500 / 12000) ** damping;
+/** Feedback of a comb with a loop of `delay` seconds so that it falls 60 dB in `decay` seconds. */
+export const reverbCombFeedback = (delay, decay) => 10 ** ((-3 * delay) / decay);
+/** The energy a comb stores grows with the decay time; this keeps the wet level the same at every decay. */
+const reverbInputGain = (decay) => REVERB_LEVEL * Math.sqrt(REVERB_REF_DECAY / decay);
+
 export function createReverb(ctx, params) {
   const p = accept('reverb', params);
   const input = ctx.createGain();
   input.gain.value = 1;
   const ret = ctx.createGain();
   ret.gain.value = p.return;
-  // Width: the wet channels go through two panners; +-1 keeps them apart (as before), 0 centres both (mono).
-  const widthIn = ctx.createChannelSplitter(2);
-  const panL = ctx.createStereoPanner();
-  panL.pan.value = 0 - p.width;
-  const panR = ctx.createStereoPanner();
-  panR.pan.value = p.width;
-  widthIn.connect(panL, 0);
-  widthIn.connect(panR, 1);
-  panL.connect(ret);
-  panR.connect(ret);
-  let seed = 1;
-  let timer = null;
-  const retiring = new Map(); // timer -> voice that is fading out
-  let enabled = true;
-
-  function makeVoice(startGain) {
-    const conv = ctx.createConvolver();
-    const [l, r] = makeImpulse(p.decay, p.damping, ctx.sampleRate, mulberry32(seed++));
-    const buffer = ctx.createBuffer(2, l.length, ctx.sampleRate);
-    buffer.getChannelData(0).set(l);
-    buffer.getChannelData(1).set(r);
-    conv.buffer = buffer;
-    const gain = ctx.createGain();
-    gain.gain.value = startGain;
-    input.connect(conv);
-    conv.connect(gain);
-    gain.connect(widthIn);
-    return { conv, gain };
-  }
-  const dropVoice = (v) => {
-    input.disconnect(v.conv);
-    v.conv.disconnect();
-    v.gain.disconnect();
+  const nodes = [input, ret];
+  const own = (n) => {
+    nodes.push(n);
+    return n;
   };
-
-  let voice = makeVoice(1);
-
-  function rebuild() {
-    timer = null;
-    const old = voice;
-    voice = makeVoice(0);
-    voice.gain.gain.setTargetAtTime(1, ctx.currentTime, FADE);
-    old.gain.gain.setTargetAtTime(0, ctx.currentTime, FADE);
-    const h = setTimeout(() => {
-      retiring.delete(h);
-      dropVoice(old);
-    }, RETIRE_MS);
-    retiring.set(h, old);
-  }
+  const send = own(ctx.createGain());
+  send.channelCount = 1;
+  send.channelCountMode = 'explicit'; // the reverb takes the sum of both channels, like Freeverb
+  send.gain.value = reverbInputGain(p.decay);
+  input.connect(send);
+  const combs = [];
+  const delayLine = (seconds) => {
+    const d = own(ctx.createDelay(0.1));
+    d.delayTime.value = seconds;
+    return d;
+  };
+  // w[n] = x[n] + g w[n-D]; y[n] = -g w[n] + w[n-D]
+  const allpass = (from, seconds) => {
+    const w = own(ctx.createGain());
+    const dl = delayLine(seconds);
+    const back = own(ctx.createGain());
+    back.gain.value = REVERB_ALLPASS_GAIN;
+    const front = own(ctx.createGain());
+    front.gain.value = 0 - REVERB_ALLPASS_GAIN;
+    const out = own(ctx.createGain());
+    from.connect(w);
+    w.connect(dl);
+    dl.connect(back);
+    back.connect(w);
+    w.connect(front);
+    front.connect(out);
+    dl.connect(out);
+    return out;
+  };
+  // Width: the two channels go through panners; +-1 keeps them apart, 0 centres both (mono).
+  const pans = [0 - p.width, p.width].map((pan) => {
+    const node = own(ctx.createStereoPanner());
+    node.pan.value = pan;
+    node.connect(ret);
+    return node;
+  });
+  pans.forEach((panner, side) => {
+    const sum = own(ctx.createGain());
+    for (const len of REVERB_COMBS) {
+      const seconds = (len + side * REVERB_SPREAD) / REVERB_RATE;
+      const dl = delayLine(seconds);
+      const damp = own(ctx.createBiquadFilter());
+      damp.type = 'lowpass';
+      damp.Q.value = -3; // dB: like the delay's tone filter, never above 1 inside a feedback loop
+      damp.frequency.value = reverbDampHz(p.damping);
+      const fb = own(ctx.createGain());
+      fb.gain.value = reverbCombFeedback(seconds, p.decay);
+      send.connect(dl);
+      dl.connect(damp);
+      damp.connect(fb);
+      fb.connect(dl);
+      damp.connect(sum);
+      combs.push({ damp, fb, seconds });
+    }
+    let chain = sum;
+    for (const len of REVERB_ALLPASS) chain = allpass(chain, (len + side * REVERB_SPREAD) / REVERB_RATE);
+    chain.connect(panner);
+  });
+  const [panL, panR] = pans;
+  const ramp = (param, v, tau = REVERB_SMOOTH) => param.setTargetAtTime(v, ctx.currentTime, tau);
+  let enabled = true;
 
   return {
     type: 'reverb',
@@ -208,38 +226,28 @@ export function createReverb(ctx, params) {
     get enabled() { return enabled; },
     setEnabled(on) {
       enabled = Boolean(on);
-      ret.gain.setTargetAtTime(enabled ? p.return : 0, ctx.currentTime, RAMP);
+      ramp(ret.gain, enabled ? p.return : 0, RAMP);
     },
     setParam(key, value) {
       const v = clampFxParam('reverb', key, value);
       if (v === null) return;
       p[key] = v;
       if (key === 'return') {
-        if (enabled) ret.gain.setTargetAtTime(v, ctx.currentTime, RAMP);
-        return;
+        if (enabled) ramp(ret.gain, v, RAMP);
+      } else if (key === 'width') {
+        ramp(panL.pan, 0 - v, RAMP);
+        ramp(panR.pan, v, RAMP);
+      } else if (key === 'decay') {
+        for (const c of combs) ramp(c.fb.gain, reverbCombFeedback(c.seconds, v));
+        ramp(send.gain, reverbInputGain(v));
+      } else if (key === 'damping') {
+        for (const c of combs) ramp(c.damp.frequency, reverbDampHz(v));
       }
-      if (key === 'width') {
-        panL.pan.setTargetAtTime(0 - v, ctx.currentTime, RAMP);
-        panR.pan.setTargetAtTime(v, ctx.currentTime, RAMP);
-        return;
-      }
-      clearTimeout(timer);
-      timer = setTimeout(rebuild, REBUILD_DEBOUNCE_MS);
     },
     tailMs: () => p.decay * 1000,
     dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, p.decay / 4),
     disconnect() {
-      clearTimeout(timer);
-      timer = null;
-      for (const [h, v] of retiring) {
-        clearTimeout(h);
-        dropVoice(v);
-      }
-      retiring.clear();
-      dropVoice(voice);
-      for (const n of [widthIn, panL, panR]) n.disconnect();
-      input.disconnect();
-      ret.disconnect();
+      for (const n of nodes) n.disconnect();
     },
   };
 }

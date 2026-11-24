@@ -11,7 +11,19 @@ export function createEngine() {
   const ready = loadWorklet(ctx).then(() => {}); // never rejects: without the worklet only the bitcrusher is missing
   const master = ctx.createGain();
   master.gain.value = 0.8;
-  master.connect(ctx.destination);
+  // A safety net, not a sound: nothing changes below the threshold; above it the sum of modules and effects is held
+  // under full scale instead of clipping (which crackles).
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -3;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.15;
+  // A DynamicsCompressor adds make-up gain of its own (+1.7 dB with these settings, measured on a sine): trimmed away so
+  // that a signal under the threshold is exactly as loud as without the limiter.
+  const trim = ctx.createGain();
+  trim.gain.value = 0.82;
+  master.connect(limiter).connect(trim).connect(ctx.destination);
   const modules = [];
   const tempo = createTempo();
   const transport = createTransport();

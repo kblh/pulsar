@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, makeImpulse, createDelay, createReverb, createEq, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
-import { mulberry32 } from '../js/rng.js';
+import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
 import { stubCtx } from './helpers/stub-ctx.js';
 import { markWorkletLoaded } from '../js/worklet.js';
 
@@ -53,27 +52,6 @@ test('clampFxParam clamps every documented range', () => {
   assert.equal(clampFxParam('chorus', 'time', 1), null);
 });
 
-test('makeImpulse is finite, bounded, decays and is deterministic', () => {
-  const sr = 8000;
-  const [l, r] = makeImpulse(2, 0.5, sr, mulberry32(1));
-  assert.equal(l.length, 2 * sr);
-  assert.equal(r.length, 2 * sr);
-  for (const ch of [l, r]) for (const x of ch) assert.ok(Number.isFinite(x) && Math.abs(x) <= 1);
-  const energy = (a, from, to) => a.slice(from, to).reduce((s, x) => s + x * x, 0);
-  const tenth = l.length / 10;
-  assert.ok(energy(l, l.length - tenth, l.length) < 0.01 * energy(l, 0, tenth));
-  const [l2] = makeImpulse(2, 0.5, sr, mulberry32(1));
-  assert.deepEqual(l, l2);
-  assert.notDeepEqual(l, r);
-});
-
-test('makeImpulse damping darkens', () => {
-  const roughness = (a) => a.reduce((s, x, i) => (i ? s + Math.abs(x - a[i - 1]) : s), 0);
-  const [dark] = makeImpulse(1, 0.9, 8000, mulberry32(7));
-  const [bright] = makeImpulse(1, 0.1, 8000, mulberry32(7));
-  assert.ok(roughness(dark) < roughness(bright));
-});
-
 test('delay graph: input -> delay -> lowpass -> return, feedback loop through the lowpass', () => {
   const ctx = stubCtx();
   const fx = createDelay(ctx);
@@ -117,40 +95,43 @@ test('delay tailMs grows with feedback and time and stays finite', () => {
   assert.ok(Number.isFinite(worst) && worst <= 20000);
 });
 
-test('reverb setParam decay crossfades to a second convolver without jumps', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+test('reverb is algorithmic: combs in loops through a delay, no convolver and no impulse buffer', () => {
   const ctx = stubCtx();
-  const fx = createReverb(ctx);
-  assert.equal(ctx.nodes.filter((n) => n.kind === 'convolver').length, 1);
-  const g0 = ctx.nodes.filter((n) => n.kind === 'gain')[2];
-  fx.setParam('decay', 5);
-  t.mock.timers.tick(200);
-  const convs = ctx.nodes.filter((n) => n.kind === 'convolver');
-  assert.equal(convs.length, 2);
-  const g1 = ctx.nodes.filter((n) => n.kind === 'gain')[3];
-  assert.equal(fx.params.decay, 5);
-  assert.deepEqual(g0.gain.calls.at(-1).slice(0, 2), ['target', 0]);
-  assert.equal(g0.gain.calls.filter((c) => c[0] === 'value').length, 1);
-  assert.deepEqual(g1.gain.calls[0], ['value', 0]);
-  assert.deepEqual(g1.gain.calls.at(-1).slice(0, 2), ['target', 1]);
-  assert.equal(convs[1].buffer.length, 5 * ctx.sampleRate);
-  assert.equal(convs[0].disconnected, 0);
-  t.mock.timers.tick(500);
-  assert.equal(convs[0].disconnected, 1);
+  createReverb(ctx);
+  assert.equal(ctx.nodes.filter((n) => n.kind === 'convolver').length, 0);
+  assert.equal(ctx.buffers.length, 0);
+  // 8 combs and 4 allpasses per channel, each with one delay line
+  assert.equal(ctx.nodes.filter((n) => n.kind === 'delay').length, 2 * (8 + 4));
+  assert.equal(ctx.nodes.filter((n) => n.kind === 'biquad').length, 2 * 8);
+  for (const d of ctx.nodes.filter((n) => n.kind === 'delay')) assert.ok(d.delayTime.calls.find((c) => c[0] === 'value')[1] > 0);
 });
 
-test('reverb coalesces rapid changes into one rebuild', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+test('reverb decay and damping move by ramps only: nothing is rebuilt, nothing jumps', () => {
   const ctx = stubCtx();
   const fx = createReverb(ctx);
-  for (let i = 0; i < 20; i++) {
-    fx.setParam(i % 2 ? 'decay' : 'damping', i % 2 ? 1 + i * 0.1 : i / 20);
-    t.mock.timers.tick(10);
+  const nodes = ctx.nodes.length;
+  const before = valueCalls(ctx);
+  for (const [k, v] of [['decay', 5], ['decay', 0.3], ['damping', 1], ['damping', 0]]) fx.setParam(k, v);
+  assert.equal(ctx.nodes.length, nodes);
+  assert.equal(ctx.buffers.length, 0);
+  assert.deepEqual(valueCalls(ctx), before);
+  const fbs = ctx.nodes.filter((n) => n.kind === 'gain' && n.gain.calls.some((c) => c[0] === 'target' && c[1] > 0.5 && c[1] < 1));
+  assert.ok(fbs.length >= 16, 'every comb feedback is ramped');
+  const damps = ctx.nodes.filter((n) => n.kind === 'biquad');
+  for (const d of damps) assert.equal(d.frequency.calls.filter((c) => c[0] === 'target').at(-1)[1], reverbDampHz(0));
+});
+
+test('comb feedback falls 60 dB in the decay time, stays below 1 and the loop filter stays below Nyquist', () => {
+  for (const decay of [0.3, 2.5, 10]) {
+    for (const delay of [0.0253, 0.0367]) {
+      const g = reverbCombFeedback(delay, decay);
+      assert.ok(g > 0 && g < 1, `decay ${decay}`);
+      assert.ok(Math.abs(g ** (decay / delay) - 0.001) < 1e-9);
+    }
   }
-  assert.equal(ctx.buffers.length, 1);
-  t.mock.timers.tick(300);
-  assert.equal(ctx.buffers.length, 2);
-  assert.equal(ctx.nodes.filter((n) => n.kind === 'convolver').length, 2);
+  assert.equal(reverbDampHz(0), 12000);
+  assert.ok(Math.abs(reverbDampHz(1) - 1500) < 1e-9);
+  assert.ok(reverbDampHz(0.5) < reverbDampHz(0.2));
 });
 
 test('dispose ramps return to 0, disconnect disconnects everything', (t) => {
@@ -166,7 +147,7 @@ test('dispose ramps return to 0, disconnect disconnects everything', (t) => {
     t.mock.timers.tick(1000);
     for (const n of ctx.nodes) assert.ok(n.disconnected >= 1, `${fx.type} ${n.kind} not disconnected`);
     assert.ok(fx.input.disconnected >= 1);
-    assert.equal(ctx.buffers.length, fx.type === 'reverb' ? 1 : 0);
+    assert.equal(ctx.buffers.length, 0);
   }
 });
 
@@ -230,14 +211,12 @@ test('bypass: changing return while disabled stays muted and applies on enable',
   }
 });
 
-test('bypass: a reverb rebuild while disabled leaves the muted return alone', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+test('bypass: a decay change while disabled leaves the muted return alone', () => {
   const ctx = stubCtx();
   const fx = createReverb(ctx);
   fx.setEnabled(false);
   const calls = fx.output.gain.calls.length;
   fx.setParam('decay', 5);
-  t.mock.timers.tick(200);
   assert.equal(fx.output.gain.calls.length, calls);
 });
 
