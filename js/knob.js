@@ -99,6 +99,13 @@ export function createKnob({ min, max, step, value, scale = 'linear', format, on
     onInput?.(cur);
   }
 
+  // Home position: the given default, or the zero of a range that has one in the middle (a pan, an eq gain).
+  const home = defaultValue ?? (min < 0 && max > 0 ? 0 : undefined);
+  const goHome = () => {
+    if (home !== undefined) change(snap(home, opts));
+  };
+
+  let lastTap = null; // { t, x, y } of the latest tap that did not move: two close together are a double tap (a dblclick event is not sent by every touch browser)
   let drag = null; // { id, x, y, from }: where the pointer and the knob were at the press
   face.addEventListener('pointerdown', (e) => {
     if (drag) return; // a second finger
@@ -115,15 +122,23 @@ export function createKnob({ min, max, step, value, scale = 'linear', format, on
   });
   const end = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
+    if (e.type === 'pointerup') {
+      const still = Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6;
+      const now = e.timeStamp;
+      if (still && lastTap && now - lastTap.t < 400 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24) {
+        lastTap = null;
+        goHome();
+      } else {
+        lastTap = still ? { t: now, x: e.clientX, y: e.clientY } : null;
+      }
+    }
     drag = null;
     face.classList.remove('active');
   };
   face.addEventListener('pointerup', end);
   face.addEventListener('pointercancel', end);
   face.addEventListener('lostpointercapture', end);
-  face.addEventListener('dblclick', () => {
-    if (defaultValue !== undefined) change(snap(defaultValue, opts));
-  });
+  face.addEventListener('dblclick', goHome);
   face.addEventListener('wheel', (e) => {
     e.preventDefault();
     const dir = e.deltaY < 0 ? 1 : -1;
