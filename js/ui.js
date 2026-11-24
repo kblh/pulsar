@@ -2,6 +2,7 @@ import { SCALES, pitchClasses, toggleClass } from './scales.js';
 import { flipStep, formatPattern, isOnlyHit } from './rhythm.js';
 import { createStepGrid } from './step-grid.js';
 import { createKeyboard } from './keyboard.js';
+import { createCircle } from './circle.js';
 import { WAVES, ROOTS } from './options.js';
 import { cleanName, NAME_MAX, serializeModule, addModuleFromData, MAX_MODULES } from './scene.js';
 import { mountScenes, defaultDownload } from './scenes-ui.js';
@@ -135,15 +136,39 @@ function oscGroup(m) {
     ));
 }
 
+const NOTE_VIEW_KEY = 'pulsar.noteView';
+
+/** The notes of a melody as a circle of fifths (the default) or a keyboard, with a switch; the choice is remembered. */
+function notePicker({ keyboard, circle }) {
+  let view = 'circle';
+  try { if (localStorage.getItem(NOTE_VIEW_KEY) === 'keys') view = 'keys'; } catch { /* storage is blocked */ }
+  const holder = el('div', { className: 'note-picker' });
+  const show = (v) => holder.replaceChildren((v === 'keys' ? keyboard : circle).node);
+  const mode = createSegmented({
+    options: ['circle', 'keys'], value: view, ariaLabel: 'notes view',
+    onChange: (v) => {
+      show(v);
+      try { localStorage.setItem(NOTE_VIEW_KEY, v); } catch { /* storage is blocked */ }
+    },
+  });
+  show(view);
+  return {
+    node: el('div', { className: 'note-view' }, mode.node, holder),
+    set(classes) {
+      keyboard.set(classes);
+      circle.set(classes);
+    },
+  };
+}
+
 function melodicControls(m, live) {
   const pitch = pitchRows(m, { withNotes: false });
   const set = (k) => (v) => m.setParam(k, v);
-  const keyboard = createKeyboard({
-    onToggle: (pc) => {
-      m.setParam('pitchConfig', toggleClass(m.params.pitchConfig, pc));
-      paint();
-    },
-  });
+  const toggle = (pc) => {
+    m.setParam('pitchConfig', toggleClass(m.params.pitchConfig, pc));
+    paint();
+  };
+  const keyboard = notePicker({ keyboard: createKeyboard({ onToggle: toggle }), circle: createCircle({ onToggle: toggle }) });
   const rhythmGrid = createStepGrid({
     ariaLabel: 'rhythm steps',
     onToggle: (i) => {
@@ -173,7 +198,7 @@ function melodicControls(m, live) {
       bpmKnob(m),
       paramKnob('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct, defaultValue: 0 }),
     )),
-    group('pitch', ...pitch, field('keys', keyboard.node)),
+    group('pitch', ...pitch, field('notes', keyboard.node)),
     group('rhythm',
       field('steps', rhythmGrid.node),
       knobs(
