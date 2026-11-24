@@ -87,12 +87,52 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 .card.open .card-head .card-volume { flex: 1 1 100%; max-width: none; order: 10; }
 .card-head button { min-width: 44px; min-height: 44px; }
 .card-close { font-size: 22px; line-height: 1; }
-.fx-controls.bypassed { opacity: 0.45; }
+/* effect pedal: a plain enclosure in the theme's colours, a knob per parameter, the silkscreen name, an LED and a footswitch */
+.pedal {
+  position: relative; width: min(100%, 280px); margin: 12px auto 8px; padding: 18px 12px 22px;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  border: 2px solid var(--line); border-radius: 16px;
+  background: linear-gradient(165deg, var(--panel-hi), var(--panel));
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.22), inset 0 -3px 8px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.55);
+}
+.pedal::before, .pedal::after {
+  content: ''; position: absolute; top: 9px; width: 8px; height: 8px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e4e4e4, #5a5a5a 70%);
+}
+.pedal::before { left: 12px; }
+.pedal::after { right: 12px; }
+.pedal-knobs { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 6px; padding-top: 4px; }
+.knob-wrap { display: flex; flex-direction: column; align-items: center; width: 76px; }
+.knob-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg); }
+.knob-value { min-height: 1.4em; font-size: 11px; color: var(--dim); white-space: nowrap; }
+.knob { width: 64px; height: 64px; border-radius: 50%; cursor: ns-resize; touch-action: none; }
+.knob:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.knob-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.knob-track { fill: none; stroke: rgba(0, 0, 0, 0.45); stroke-width: 4; stroke-linecap: round; }
+.knob-arc { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 3px var(--glow)); }
+.knob-body { fill: #141414; stroke: #000; stroke-width: 1; }
+.knob-cap { fill: #2a2a2a; stroke: rgba(255, 255, 255, 0.18); stroke-width: 1; }
+.knob-pointer { stroke: #f2f2f2; stroke-width: 3; stroke-linecap: round; }
+.knob.active .knob-cap { fill: #3a3a3a; }
+.pedal-plate { width: 100%; padding: 6px 0; text-align: center; background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; }
+.pedal-name { font-size: 15px; font-weight: 700; letter-spacing: 0.3em; text-indent: 0.3em; color: var(--fg); }
+.pedal-foot { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 4px; }
+.pedal-led { width: 12px; height: 12px; border-radius: 50%; background: #ff3b30; box-shadow: 0 0 10px 2px rgba(255, 59, 48, 0.8), inset 0 1px 2px rgba(255, 255, 255, 0.6); }
+.pedal.bypassed .pedal-led { background: #4a1512; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6); }
+.footswitch {
+  width: 64px; height: 64px; border: 2px solid #222; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f4f4f4, #9a9a9a 55%, #4d4d4d);
+  box-shadow: 0 4px 0 #222, 0 6px 10px rgba(0, 0, 0, 0.6);
+}
+.footswitch:active { transform: translateY(3px); box-shadow: 0 1px 0 #222, 0 2px 4px rgba(0, 0, 0, 0.6); }
+.footswitch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.pedal.bypassed .knob-arc { opacity: 0.35; }
+.pedal.bypassed .pedal-name { opacity: 0.6; }
 body.detail-open { overflow: hidden; }
 body.detail-open header.bar, body.detail-open #scene-panel, body.detail-open .card:not(.open) { visibility: hidden; }
 
 /* controls */
-.hud-slider, .nudge, .hud-seg, .card, button, .check { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.hud-slider, .nudge, .hud-seg, .knob-wrap, .card, button, .check { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 input[type=text], textarea { user-select: text; -webkit-user-select: text; }
 button {
   font: inherit; color: var(--fg); background: none; border: 0; cursor: pointer; padding: 0;

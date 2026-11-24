@@ -16,7 +16,7 @@ import { iconButton, setIcon, icon } from './icons.js';
 import { createSlider, createSegmented } from './controls.js';
 import { createEnvelopeEditor } from './envelope.js';
 import { splitRoot, joinRoot, formatCents } from './hud.js';
-import { FX_FIELDS } from './fx-fields.js';
+import { createPedal } from './pedal.js';
 import { mountSequenceCard } from './sequence-ui.js';
 import { createDetail } from './detail.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
@@ -226,20 +226,6 @@ function sendRow(engine, m, slot) {
   return { row: row(`send ${slot + 1}`, sel, level.node), fill };
 }
 
-function fxControls(engine, fx) {
-  return FX_FIELDS[fx.type].map(({ key, min, max, step, scale, format }) => {
-    // The slider shows the value the effect actually accepted.
-    const s = createSlider({
-      min, max, step, scale, format, nudge: step, ariaLabel: key, value: fx.params[key],
-      onInput: (v) => {
-        engine.setFxParam(fx, key, v);
-        s.set(fx.params[key]);
-      },
-    });
-    return row(key, s.node);
-  });
-}
-
 const NOTE_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 const midiName = (n) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
 
@@ -333,7 +319,7 @@ function rhythmicControls(m, live) {
 
 export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addMenuEl, menuBtn, mainMenuEl, statusEl, transportEl, scenePanelEl, store, accent }) {
   const panels = new Map(); // module id -> { card, rows, module, toggle }
-  const fxCards = new Map(); // effect id -> { card, fx, bypass, controls }
+  const fxCards = new Map(); // effect id -> { card, fx, bypass, pedal }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   const detail = createDetail({
     win: window,
@@ -385,7 +371,15 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     bypass.setAttribute('aria-label', 'effect on');
     bypass.onchange = () => engine.setFxEnabled(fx, bypass.checked);
     const remove = iconButton('trash', { label: 'remove effect', onClick: () => removeFxPanel(fx.id) });
-    const controls = el('div', { className: 'fx-controls' }, ...fxControls(engine, fx));
+    const pedal = createPedal({
+      fx,
+      setParam: (key, v) => engine.setFxParam(fx, key, v),
+      onToggle: () => {
+        bypass.checked = !bypass.checked;
+        bypass.onchange();
+      },
+    });
+    const controls = pedal.node;
     const card = createCard({
       kind: 'effect',
       title: `${fx.id} ${fx.name}`,
@@ -395,7 +389,7 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
       body: [controls],
       detail,
     });
-    fxCards.set(fx.id, { card, fx, bypass, controls });
+    fxCards.set(fx.id, { card, fx, bypass, pedal });
     effectsEl.append(card.node);
   }
 
@@ -661,10 +655,10 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
       effectsSig = sig;
       for (const fills of sendFills.values()) fills.forEach((f) => f());
     }
-    for (const { card, fx, bypass, controls } of fxCards.values()) {
+    for (const { card, fx, bypass, pedal } of fxCards.values()) {
       card.setTitle(`${fx.id} ${fx.name}`);
       bypass.checked = fx.enabled;
-      controls.classList.toggle('bypassed', !fx.enabled);
+      pedal.setEnabled(fx.enabled);
     }
     for (const { card, rows, module, toggle } of panels.values()) {
       card.setTitle(`${module.name}`);

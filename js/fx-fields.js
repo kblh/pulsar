@@ -44,3 +44,13 @@ export const FX_FIELDS = {
 
 /** The text of the add-menu button. */
 export const FX_LABELS = { delay: 'delay', reverb: 'reverb', eq: 'eq', chorus: 'chorus', distortion: 'drive', bitcrusher: 'crusher' };
+
+/** How each effect is named on its pedal. */
+export const FX_PEDALS = {
+  delay: { title: 'DELAY' },
+  reverb: { title: 'REVERB' },
+  eq: { title: 'EQ' },
+  chorus: { title: 'CHORUS' },
+  distortion: { title: 'DRIVE' },
+  bitcrusher: { title: 'CRUSHER' },
+};
