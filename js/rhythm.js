@@ -11,9 +11,18 @@ export const RHYTHM_PRESETS = {
 const SHIFT_CHANCE = 0.5;
 const DENSITY_BAND = 1;
 
-/** A pattern from text. An empty one gets step 0 on, unless `allowEmpty` (a lane the user cleared on purpose). */
-export function parsePattern(str, { allowEmpty = false } = {}) {
-  const p = Array.from({ length: STEPS_PER_BAR }, (_, i) => String(str ?? '')[i] === 'x');
+export const SUBS_MIN = 2;
+export const SUBS_MAX = 32;
+
+/** The number of steps a drum lane has per bar: the length of its pattern text; text that is too short to say is a plain 16. */
+export const lanePatternLength = (str) => {
+  const n = String(str ?? '').length;
+  return n >= SUBS_MIN ? Math.min(n, SUBS_MAX) : STEPS_PER_BAR;
+};
+
+/** A pattern from text, `length` steps long (16 by default). An empty one gets step 0 on, unless `allowEmpty` (a lane the user cleared on purpose). */
+export function parsePattern(str, { allowEmpty = false, length = STEPS_PER_BAR } = {}) {
+  const p = Array.from({ length }, (_, i) => String(str ?? '')[i] === 'x');
   if (!allowEmpty && !p.some(Boolean)) p[0] = true;
   return p;
 }
@@ -88,3 +97,27 @@ export function mutateRhythm({ current, base, anchor }, { level, mode }, rng) {
     anchor: anchored,
   };
 }
+
+/** A pattern spread over `steps` steps keeping the hits' places in the bar (a hit at 1/4 stays at 1/4); like a drum machine changing its subdivision. */
+export function remapPattern(pattern, steps) {
+  const out = Array(steps).fill(false);
+  pattern.forEach((on, i) => {
+    if (on) out[Math.round((i * steps) / pattern.length) % steps] = true;
+  });
+  return out;
+}
+
+/**
+ * The positions of a lane of `subs` steps that start within one sixteenth of the bar (`sixteenth` 0..15), each with its
+ * `offset` in sixteenths (0 up to but not including 1). A lane of 16 has exactly one at offset 0 per sixteenth.
+ */
+export function positionsIn(sixteenth, subs) {
+  const out = [];
+  const first = Math.ceil((sixteenth * subs) / STEPS_PER_BAR);
+  const end = Math.ceil(((sixteenth + 1) * subs) / STEPS_PER_BAR);
+  for (let pos = first; pos < end; pos++) out.push({ pos, offset: (pos * STEPS_PER_BAR) / subs - sixteenth });
+  return out;
+}
+
+/** Which step of a pattern sounds at `pos` when the lane is turned by `rotation` steps. */
+export const stepAt = (pos, rotation, subs) => (((pos - rotation) % subs) + subs) % subs;

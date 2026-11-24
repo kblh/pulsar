@@ -347,3 +347,16 @@ body.tempo-on .bpm-row { opacity: 0.45; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+
+/* rhythm circle: the drum lanes as rings */
+.circle-box { width: 100%; display: flex; justify-content: center; }
+.circle-box[hidden] { display: none; }
+.rhythm-circle { width: 100%; max-width: 340px; aspect-ratio: 1; touch-action: manipulation; }
+.ring-track { fill: none; stroke: var(--line); stroke-dasharray: 3 5; }
+.ring-head { stroke: var(--dim); stroke-width: 2; stroke-linecap: round; }
+.ring-step { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; cursor: pointer; outline: none; }
+.ring-step[aria-pressed=true] { fill: var(--accent); stroke: var(--accent); }
+.ring-step.now { stroke: var(--fg); stroke-width: 3; }
+.ring-step:focus-visible { stroke: var(--fg); stroke-width: 3; }
+.rhythm-msg { min-height: 1.2em; text-align: center; }
+.field[hidden] { display: none; }

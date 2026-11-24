@@ -3,7 +3,7 @@ import { clampVolume, clampPan, clampLevel } from './mix.js';
 import { SCALES } from './scales.js';
 import { DEFAULT_ENV } from './synth.js';
 import { WAVES, ROOTS } from './options.js';
-import { createMelodicModule, createRhythmicModule, createDroneModule } from './module.js';
+import { createMelodicModule, createRhythmicModule, createDroneModule, cleanSounds, cleanRotation } from './module.js';
 import { cleanDuration, MAX_PARTS } from './sequence.js';
 import { cleanTempo, DEFAULT_TEMPO } from './timing.js';
 
@@ -127,6 +127,8 @@ function cleanModuleParams(type, p) {
     for (const d of ['kick', 'snare', 'hat']) if (typeof p.voices[d] === 'string') voices[d] = p.voices[d].slice(0, MAX_PATTERN);
     if (Object.keys(voices).length) out.voices = voices;
   }
+  if (type === 'rhythmic' && isObj(p.sounds)) out.sounds = cleanSounds(p.sounds);
+  if (type === 'rhythmic' && isObj(p.rotation)) out.rotation = cleanRotation(p.rotation, out.voices);
   if (type === 'rhythmic' && isObj(p.mute)) {
     out.mute = Object.fromEntries(['kick', 'snare', 'hat'].map((d) => [d, p.mute[d] === true]));
   }
@@ -218,6 +220,10 @@ function applyParams(m, params) {
   for (const [key, value] of Object.entries(params)) {
     if (m.type === 'rhythmic' && key === 'voices') {
       for (const [drum, pattern] of Object.entries(value)) m.setParam(`voice:${drum}`, pattern);
+    } else if (m.type === 'rhythmic' && key === 'rotation') {
+      for (const [drum, n] of Object.entries(value)) m.setParam(`rotation:${drum}`, n);
+    } else if (m.type === 'rhythmic' && key === 'sounds') {
+      for (const [drum, n] of Object.entries(value)) m.setParam(`sound:${drum}`, n);
     } else if (m.type === 'rhythmic' && key === 'mute') {
       for (const [drum, on] of Object.entries(value)) m.setParam(`mute:${drum}`, on);
     } else {

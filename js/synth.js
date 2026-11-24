@@ -87,52 +87,79 @@ export function playNote(ctx, dest, { freq, time, duration, wave, env = DEFAULT_
   disconnectOnEnd(oscB, oscB, gainB);
 }
 
-export function playDrum(ctx, dest, { kind, time }) {
-  if (kind === 'kick') {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.frequency.setValueAtTime(150, time);
-    osc.frequency.exponentialRampToValueAtTime(45, time + 0.12);
-    gain.gain.setValueAtTime(0.9, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
-    osc.connect(gain).connect(dest);
-    osc.start(time);
-    osc.stop(time + 0.32);
-    disconnectOnEnd(osc, osc, gain);
-  } else if (kind === 'snare') {
-    const noise = ctx.createBufferSource();
-    const ngain = ctx.createGain();
-    const tri = ctx.createOscillator();
-    const tgain = ctx.createGain();
-    noise.buffer = noiseBuffer(ctx);
-    ngain.gain.setValueAtTime(0.5, time);
-    ngain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
-    tri.type = 'triangle';
-    tri.frequency.value = 180;
-    tgain.gain.setValueAtTime(0.4, time);
-    tgain.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
-    noise.connect(ngain).connect(dest);
-    tri.connect(tgain).connect(dest);
-    noise.start(time);
-    noise.stop(time + 0.2);
-    tri.start(time);
-    tri.stop(time + 0.12);
-    disconnectOnEnd(noise, noise, ngain);
-    disconnectOnEnd(tri, tri, tgain);
-  } else {
-    const noise = ctx.createBufferSource();
-    const hp = ctx.createBiquadFilter();
-    const gain = ctx.createGain();
-    noise.buffer = noiseBuffer(ctx);
-    hp.type = 'highpass';
-    hp.frequency.value = 7000;
-    gain.gain.setValueAtTime(0.3, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
-    noise.connect(hp).connect(gain).connect(dest);
-    noise.start(time);
-    noise.stop(time + 0.06);
-    disconnectOnEnd(noise, noise, hp, gain);
-  }
+/** The sounds of each drum; the first of each is the original one, a saved module without a choice keeps it. */
+export const DRUM_SOUNDS = {
+  kick: ['classic', 'deep', 'punchy'],
+  snare: ['classic', 'tight', 'rimshot'],
+  hat: ['closed', 'open', 'ride'],
+};
+
+/** Noise through a filter into a decaying gain: the building block of the snares and hats. */
+function noiseHit(ctx, dest, time, { type, freq, q = 1, peak, length }) {
+  const noise = ctx.createBufferSource();
+  const filter = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  noise.buffer = noiseBuffer(ctx);
+  filter.type = type;
+  filter.frequency.value = freq;
+  filter.Q.value = q;
+  gain.gain.setValueAtTime(peak, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + length);
+  noise.connect(filter).connect(gain).connect(dest);
+  noise.start(time);
+  noise.stop(time + length + 0.01);
+  disconnectOnEnd(noise, noise, filter, gain);
+}
+
+/** A pitched hit: an oscillator that glides from `from` to `to` hertz while it fades. */
+function toneHit(ctx, dest, time, { type = 'sine', from, to = from, peak, length }) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(from, time);
+  if (to !== from) osc.frequency.exponentialRampToValueAtTime(to, time + length);
+  gain.gain.setValueAtTime(peak, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + length);
+  osc.connect(gain).connect(dest);
+  osc.start(time);
+  osc.stop(time + length + 0.02);
+  disconnectOnEnd(osc, osc, gain);
+}
+
+const DRUM_VOICES = {
+  kick: [
+    (ctx, dest, t) => toneHit(ctx, dest, t, { from: 150, to: 45, peak: 0.9, length: 0.3 }),
+    (ctx, dest, t) => toneHit(ctx, dest, t, { from: 90, to: 38, peak: 0.9, length: 0.55 }),
+    (ctx, dest, t) => {
+      toneHit(ctx, dest, t, { type: 'triangle', from: 190, to: 55, peak: 0.9, length: 0.16 });
+      noiseHit(ctx, dest, t, { type: 'highpass', freq: 1500, peak: 0.3, length: 0.03 });
+    },
+  ],
+  snare: [
+    (ctx, dest, t) => {
+      noiseHit(ctx, dest, t, { type: 'allpass', freq: 1000, peak: 0.5, length: 0.18 });
+      toneHit(ctx, dest, t, { type: 'triangle', from: 180, peak: 0.4, length: 0.1 });
+    },
+    (ctx, dest, t) => noiseHit(ctx, dest, t, { type: 'bandpass', freq: 2200, q: 1.5, peak: 0.7, length: 0.09 }),
+    (ctx, dest, t) => {
+      toneHit(ctx, dest, t, { type: 'square', from: 420, to: 210, peak: 0.35, length: 0.05 });
+      noiseHit(ctx, dest, t, { type: 'highpass', freq: 1800, peak: 0.4, length: 0.08 });
+    },
+  ],
+  hat: [
+    (ctx, dest, t) => noiseHit(ctx, dest, t, { type: 'highpass', freq: 7000, peak: 0.3, length: 0.05 }),
+    (ctx, dest, t) => noiseHit(ctx, dest, t, { type: 'highpass', freq: 6000, peak: 0.3, length: 0.3 }),
+    (ctx, dest, t) => {
+      for (const freq of [440, 587, 659, 784, 988]) toneHit(ctx, dest, t, { from: freq, peak: 0.05, length: 0.2 });
+      noiseHit(ctx, dest, t, { type: 'highpass', freq: 7000, peak: 0.12, length: 0.2 });
+    },
+  ],
+};
+
+/** One drum hit; `sound` is an index into DRUM_SOUNDS[kind], anything unusable plays the first one. */
+export function playDrum(ctx, dest, { kind, sound = 0, time }) {
+  const voices = DRUM_VOICES[kind] ?? DRUM_VOICES.hat;
+  (voices[sound] ?? voices[0])(ctx, dest, time);
 }
 
 /**

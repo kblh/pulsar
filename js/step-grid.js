@@ -1,15 +1,15 @@
 const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
 
 /**
- * 16 pads in a 4 x 4 grid (step 1 top left). A click calls `onToggle(i)`; a touch that turns into a scroll sends no click.
+ * 16 pads (or up to `max`) in a grid of 4 columns (step 1 top left). A click calls `onToggle(i)`; a touch that turns into a scroll sends no click.
  * `set(pattern)` shows the steps and `setPlayhead(i)` marks the current one, neither calls `onToggle`.
  * Both only touch a pad whose state changed, so they are cheap to call every frame.
  */
-export function createStepGrid({ ariaLabel, onToggle }) {
+export function createStepGrid({ ariaLabel, onToggle, max = 16 }) {
   const node = el('div', { className: 'pads' });
   node.setAttribute('role', 'group');
   if (ariaLabel) node.setAttribute('aria-label', ariaLabel);
-  const pads = Array.from({ length: 16 }, (_, i) => {
+  const pads = Array.from({ length: max }, (_, i) => {
     const b = el('button', { type: 'button', className: 'pad' });
     b.setAttribute('aria-label', `step ${i + 1}`);
     b.setAttribute('aria-pressed', 'false');
@@ -17,11 +17,17 @@ export function createStepGrid({ ariaLabel, onToggle }) {
     return b;
   });
   node.append(...pads);
-  const on = Array(16).fill(false);
+  const on = Array(max).fill(false);
+  let shown = max;
   let now = -1;
   return {
     node,
     set(pattern) {
+      const count = Math.min(max, pattern.length);
+      if (count !== shown) {
+        shown = count;
+        pads.forEach((b, i) => { b.hidden = i >= count; });
+      }
       pads.forEach((b, i) => {
         const v = Boolean(pattern[i]);
         if (v === on[i]) return;

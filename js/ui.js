@@ -1,6 +1,9 @@
 import { SCALES, pitchClasses, toggleClass } from './scales.js';
 import { flipStep, formatPattern, isOnlyHit } from './rhythm.js';
 import { createStepGrid } from './step-grid.js';
+import { createRhythmCircle } from './rhythm-circle.js';
+import { BUILT_IN_RHYTHMS, createRhythmStore } from './rhythm-store.js';
+import { DRUM_SOUNDS } from './synth.js';
 import { createKeyboard } from './keyboard.js';
 import { createCircle } from './circle.js';
 import { WAVES, ROOTS } from './options.js';
@@ -324,23 +327,91 @@ function statusRow(name, getText) {
   return { node: line, update: () => { value.textContent = getText(); } };
 }
 
+const RHYTHM_VIEW_KEY = 'pulsar.rhythmView';
+const storageOrNull = () => { try { return window.localStorage; } catch { return null; } };
+const rhythmStore = createRhythmStore(storageOrNull() ?? { getItem: () => null, setItem: () => { throw new Error('no storage'); } });
+
+/** Built-in grooves and the user's saved ones: pick to load, save the current one under a name, delete a saved one. */
+function rhythmLibrary(m, repaint) {
+  const msg = el('div', { className: 'muted rhythm-msg', role: 'status' });
+  const picker = el('select');
+  picker.setAttribute('aria-label', 'rhythm');
+  const name = el('input', { type: 'text', placeholder: 'name', spellcheck: false, maxLength: 24 });
+  name.setAttribute('aria-label', 'rhythm name');
+  const remove = iconButton('trash', { label: 'delete saved rhythm' });
+  const say = (t) => { msg.textContent = t; };
+  const option = (r, saved) => el('option', { value: `${saved ? 's' : 'b'}:${r.id}`, textContent: r.name });
+  const refill = (selected) => {
+    const saved = rhythmStore.list();
+    picker.replaceChildren(
+      el('option', { value: '', textContent: 'choose a rhythm' }),
+      el('optgroup', { label: 'built in' }, ...BUILT_IN_RHYTHMS.map((r) => option(r, false))),
+      ...(saved.length ? [el('optgroup', { label: 'saved' }, ...saved.map((r) => option(r, true)))] : []));
+    picker.value = selected ?? '';
+    remove.disabled = !picker.value.startsWith('s:');
+  };
+  const find = (value) => (value.startsWith('s:') ? rhythmStore.get(value.slice(2)) : BUILT_IN_RHYTHMS.find((r) => r.id === value.slice(2)));
+  picker.onchange = () => {
+    const r = picker.value ? find(picker.value) : null;
+    remove.disabled = !picker.value.startsWith('s:');
+    if (!r) return;
+    for (const [d, pattern] of Object.entries(r.voices)) m.setParam(`voice:${d}`, pattern);
+    for (const d of ['kick', 'snare', 'hat']) m.setParam(`rotation:${d}`, r.rotation?.[d] ?? 0);
+    for (const [d, n] of Object.entries(r.sounds ?? {})) m.setParam(`sound:${d}`, n);
+    say('');
+    repaint();
+  };
+  const save = iconButton('save', { label: 'save the rhythm' });
+  save.onclick = () => {
+    const r = rhythmStore.save(name.value, { voices: m.params.voices, rotation: m.params.rotation, sounds: m.params.sounds });
+    if (!r.ok) return say(r.error);
+    say(`saved "${name.value.trim()}"`);
+    name.value = '';
+    refill(`s:${r.id}`);
+  };
+  name.onkeydown = (e) => { if (e.key === 'Enter') save.onclick(); };
+  remove.onclick = () => {
+    const r = rhythmStore.remove(picker.value.slice(2));
+    say(r.ok ? 'deleted' : r.error);
+    refill();
+  };
+  refill();
+  return field('rhythms', picker, el('div', { className: 'pair' }, name, save, remove), msg);
+}
+
 function rhythmicControls(m, live) {
   const set = (k) => (v) => m.setParam(k, v);
   const DRUMS = ['kick', 'snare', 'hat'];
   let lane = 'kick';
-  const grid = createStepGrid({
-    ariaLabel: 'kick steps',
-    onToggle: (i) => {
-      m.setParam(`voice:${lane}`, formatPattern(flipStep(m.state.voices[lane].current, i)));
-      paint();
-    },
-  });
-  const paint = () => grid.set(m.state.voices[lane].current);
-  const laneSeg = seg(DRUMS, lane, 'lane', (v) => {
+  const flip = (drum, i) => {
+    m.setParam(`voice:${drum}`, formatPattern(flipStep(m.state.voices[drum].current, i)));
+    paint();
+  };
+  const grid = createStepGrid({ ariaLabel: 'kick steps', onToggle: (i) => flip(lane, i), max: 32 });
+  const circle = createRhythmCircle({ onToggle: flip });
+  const paint = () => {
+    grid.set(m.state.voices[lane].current);
+    circle.set(Object.fromEntries(DRUMS.map((d) => [d, m.state.voices[d].current])), m.params.rotation);
+  };
+  const laneField = field('lane', seg(DRUMS, lane, 'lane', (v) => {
     lane = v;
     grid.node.setAttribute('aria-label', `${lane} steps`);
     paint();
+  }));
+  const gridField = field('steps', grid.node);
+  let view = 'circle';
+  try { if (localStorage.getItem(RHYTHM_VIEW_KEY) === 'grid') view = 'grid'; } catch { /* storage is blocked */ }
+  const circleBox = el('div', { className: 'circle-box' }, circle.node);
+  const showView = (v) => {
+    view = v;
+    circleBox.hidden = v !== 'circle';
+    laneField.hidden = gridField.hidden = v !== 'grid';
+  };
+  const viewSeg = seg(['circle', 'grid'], view, 'rhythm view', (v) => {
+    showView(v);
+    try { localStorage.setItem(RHYTHM_VIEW_KEY, v); } catch { /* storage is blocked */ }
   });
+  showView(view);
   const muteButtons = DRUMS.map((d) => {
     const b = el('button', { type: 'button', className: 'mute-btn' });
     const show = () => {
@@ -357,17 +428,68 @@ function rhythmicControls(m, live) {
     show();
     return b;
   });
+  const soundSegs = DRUMS.map((d) => createSegmented({
+    options: DRUM_SOUNDS[d], value: DRUM_SOUNDS[d][m.params.sounds[d]], ariaLabel: `${d} sound`,
+    onChange: (v) => m.setParam(`sound:${d}`, DRUM_SOUNDS[d].indexOf(v)),
+  }));
+  // Steps and rotation of each lane: the rotation knob ends at the lane's last step, so it is built again when the lane changes length.
+  const laneKnobs = DRUMS.map((d) => {
+    const box = el('div', { className: 'knobs' });
+    let rot = null;
+    let subs = null;
+    const build = () => {
+      const n = m.state.voices[d].current.length;
+      subs.set(n);
+      rot = createKnob({
+        min: 0, max: n - 1, step: 1, format: String, label: 'rotation', ariaLabel: `${d} rotation`, value: m.params.rotation[d], defaultValue: 0,
+        onInput: (v) => {
+          m.setParam(`rotation:${d}`, v);
+          rot.set(m.params.rotation[d]);
+          paint();
+        },
+      });
+      box.replaceChildren(subs.node, rot.node);
+    };
+    subs = createKnob({
+      min: 2, max: 32, step: 1, format: String, label: 'steps', ariaLabel: `${d} steps`, value: m.state.voices[d].current.length, defaultValue: 16,
+      onInput: (v) => {
+        m.setParam(`subs:${d}`, v);
+        subs.set(m.state.voices[d].current.length);
+        build();
+        paint();
+      },
+    });
+    build();
+    return { node: field(d, box), build };
+  });
+  const library = rhythmLibrary(m, () => {
+    laneKnobs.forEach((k) => k.build());
+    paint();
+    soundSegs.forEach((sg, k) => sg.set(DRUM_SOUNDS[DRUMS[k]][m.params.sounds[DRUMS[k]]]));
+  });
   paint();
-  live.push({ update: (playhead) => { paint(); grid.setPlayhead(playhead); } });
+  live.push({
+    update: (playhead) => {
+      paint();
+      const j = (stepsOf, pos) => (pos < 0 ? -1 : (((pos - m.params.rotation[lane]) % stepsOf) + stepsOf) % stepsOf);
+      grid.setPlayhead(playhead < 0 ? -1 : j(m.state.voices[lane].current.length, m.state.positions[lane]));
+      circle.setPlayhead(playhead, m.state.positions);
+    },
+  });
   return [
     group('timing', knobs(
       bpmKnob(m),
       paramKnob('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct, defaultValue: 0 }),
     )),
     group('pattern',
-      field('lane', laneSeg),
-      field('steps', grid.node),
+      field('view', viewSeg),
+      circleBox,
+      laneField,
+      gridField,
       field('mute', el('div', { className: 'mute-row' }, ...muteButtons))),
+    group('steps and rotation', ...laneKnobs.map((k) => k.node)),
+    group('sounds', ...DRUMS.map((d, k) => field(d, soundSegs[k].node))),
+    group('rhythms', library),
     group('evolution',
       knobs(paramKnob('rhythm mod', m, 'rhythmMod', { min: 1, max: 10, step: 1 })),
       field('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution')))),

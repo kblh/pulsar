@@ -4,8 +4,8 @@ import { createTrack, advance } from './track.js';
 import { stepDuration, effectiveBpm } from './timing.js';
 import { mutationEvery } from './evolution.js';
 import { mutateMelody, randomMelody } from './melody.js';
-import { mutateRhythm, parsePattern, RHYTHM_PRESETS } from './rhythm.js';
-import { playNote, playDrum, createDroneVoice, DEFAULT_ENV } from './synth.js';
+import { mutateRhythm, parsePattern, RHYTHM_PRESETS, lanePatternLength, remapPattern, positionsIn, stepAt, formatPattern, SUBS_MIN, SUBS_MAX } from './rhythm.js';
+import { playNote, playDrum, createDroneVoice, DEFAULT_ENV, DRUM_SOUNDS } from './synth.js';
 import { WAVES } from './options.js';
 
 let nextId = 1;
@@ -13,6 +13,17 @@ const DRUMS = ['kick', 'snare', 'hat'];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const cleanMute = (raw) => Object.fromEntries(DRUMS.map((d) => [d, raw !== null && typeof raw === 'object' && raw[d] === true]));
+/** A sound index per drum; a missing, fractional or out-of-range one becomes the first sound. */
+export const cleanSounds = (raw) => Object.fromEntries(DRUMS.map((d) => {
+  const n = raw !== null && typeof raw === 'object' ? raw[d] : undefined;
+  return [d, Number.isInteger(n) && n >= 0 && n < DRUM_SOUNDS[d].length ? n : 0];
+}));
+/** A rotation per drum, whole steps inside the lane (0 up to its step count minus one). */
+export const cleanRotation = (raw, voices) => Object.fromEntries(DRUMS.map((d) => {
+  const n = raw !== null && typeof raw === 'object' ? raw[d] : undefined;
+  const subs = lanePatternLength(voices?.[d]);
+  return [d, Number.isInteger(n) ? ((n % subs) + subs) % subs : 0];
+}));
 const evolved = (pattern) => ({ current: pattern, base: [...pattern] });
 
 const LIMITS = {
@@ -52,8 +63,23 @@ function applyParam(m, key, value) {
     m.params[key] = clamp(float ? n : Math.round(n), lo, hi);
   } else if (key.startsWith('voice:')) {
     const v = key.slice(6);
+    if (!DRUMS.includes(v)) return;
     m.params.voices[v] = value;
-    m.state.voices[v] = evolved(parsePattern(value, { allowEmpty: true }));
+    m.state.voices[v] = evolved(parsePattern(value, { allowEmpty: true, length: lanePatternLength(value) }));
+    m.params.rotation = cleanRotation(m.params.rotation, m.params.voices);
+  } else if (key.startsWith('subs:')) {
+    const d = key.slice(5);
+    const n = Number(value);
+    if (!DRUMS.includes(d) || !Number.isInteger(n) || n < SUBS_MIN || n > SUBS_MAX) return;
+    applyParam(m, `voice:${d}`, formatPattern(remapPattern(m.state.voices[d].current, n)));
+  } else if (key.startsWith('rotation:')) {
+    const d = key.slice(9);
+    const n = Number(value);
+    if (DRUMS.includes(d) && Number.isInteger(n)) m.params.rotation = cleanRotation({ ...m.params.rotation, [d]: n }, m.params.voices);
+  } else if (key.startsWith('sound:')) {
+    const d = key.slice(6);
+    const n = Number(value);
+    if (DRUMS.includes(d) && Number.isInteger(n) && n >= 0 && n < DRUM_SOUNDS[d].length) m.params.sounds = { ...m.params.sounds, [d]: n };
   } else if (key.startsWith('mute:')) {
     const v = key.slice(5);
     if (DRUMS.includes(v)) m.params.mute[v] = value === true;
@@ -187,10 +213,25 @@ export function createRhythmicModule(overrides = {}) {
     ...overrides,
     voices,
     mute: cleanMute(overrides.mute),
+    sounds: cleanSounds(overrides.sounds),
+    rotation: cleanRotation(overrides.rotation, voices),
   };
-  const state = { voices: Object.fromEntries(DRUMS.map((d) => [d, evolved(parsePattern(voices[d], { allowEmpty: true }))])) };
+  const state = {
+    voices: Object.fromEntries(DRUMS.map((d) => [d, evolved(parsePattern(voices[d], { allowEmpty: true, length: lanePatternLength(voices[d]) }))])),
+    positions: { kick: -1, snare: -1, hat: -1 }, // the latest position each lane passed, for the display
+  };
   const m = makeModule('rhythmic', params, state, [], (mod, ctx, dest, time, step) => {
-    for (const kind of DRUMS) if (!mod.params.mute[kind] && mod.state.voices[kind].current[step]) playDrum(ctx, dest, { kind, time });
+    const sixteenth = stepDuration(mod.bpm);
+    for (const kind of DRUMS) {
+      const { current } = mod.state.voices[kind];
+      const rotation = mod.params.rotation[kind];
+      for (const { pos, offset } of positionsIn(step, current.length)) {
+        mod.state.positions[kind] = pos;
+        if (!mod.params.mute[kind] && current[stepAt(pos, rotation, current.length)]) {
+          playDrum(ctx, dest, { kind, sound: mod.params.sounds[kind], time: time + offset * sixteenth });
+        }
+      }
+    }
   });
   m.mutateBar = () => {
     const p = m.params;
