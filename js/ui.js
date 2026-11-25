@@ -327,11 +327,22 @@ function rootPicker(m) {
 }
 
 /** The live synth: pads to play, three oscillators, an envelope and a scale. */
+const PAD_LAYOUT_KEY = 'pulsar.padLayout';
+const padLayoutOptions = [{ value: 'grid', label: 'grid' }, { value: 'keys', label: 'keys' }, { value: 'kalimba', label: 'kalimba' }];
+
 function synthControls(m, live) {
+  let padLayout = 'grid';
+  try {
+    const saved = window.localStorage.getItem(PAD_LAYOUT_KEY);
+    if (saved === 'kalimba' || saved === 'keys') padLayout = saved;
+  } catch { /* no storage */ }
   const pads = createPlayPads({
     label: (i) => midiName(m.padNote(i)),
+    role: (i) => m.padRole(i),
+    layout: padLayout,
     onDown: (i) => m.noteOn(i),
     onUp: (i) => m.noteOff(i),
+    onSlide: (from, to) => m.slide(from, to),
   });
   live.push({ update: () => { pads.setLabels(); if (!m.running) pads.releaseAll(); } });
   const oscRow = (i) => {
@@ -365,7 +376,16 @@ function synthControls(m, live) {
   const pitch = pitchRows(m, { withNotes: true, withOctaves: false });
   live.push({ update: () => pitch.syncMode() });
   return [
-    group('play', pads.node, knobs(paramKnob('octave', m, 'octave', { min: -2, max: 2, step: 1, format: (v) => (v > 0 ? `+${v}` : String(v)), defaultValue: 0 }))),
+    group('play',
+      el('div', { className: 'play-layout' }, seg(padLayoutOptions, padLayout, 'pad layout', (v) => {
+        pads.setLayout(v);
+        try { window.localStorage.setItem(PAD_LAYOUT_KEY, v); } catch { /* no storage */ }
+      })),
+      pads.node,
+      Object.assign(knobs(
+        paramKnob('octave', m, 'octave', { min: -2, max: 2, step: 1, format: (v) => (v > 0 ? `+${v}` : String(v)), defaultValue: 0 }),
+        paramKnob('portamento', m, 'glide', { min: 0, max: 1, step: 0.01, format: (v) => (v === 0 ? 'off' : `${Math.round(v * 1000)} ms`), defaultValue: 0 }),
+      ), { className: 'knobs play-octave' })),
     group('oscillators', ...[0, 1, 2].map(oscRow)),
     group('envelope', envelope.node),
     group('scale', ...pitch),

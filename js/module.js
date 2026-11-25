@@ -51,6 +51,7 @@ const LIMITS = {
   randomize: [1, 10, false],
   rhythmMod: [1, 10, false],
   octave: [-2, 2, false],
+  glide: [0, 1, true],
 };
 
 
@@ -279,21 +280,30 @@ export function padNote(pitchConfig, pad, octave = 0) {
   return clamp(note, 0, 127);
 }
 
+/** 'root' for the scale's root note, 'fifth' for the note a fifth above it (any octave), otherwise null. */
+export function padRole(pitchConfig, pad) {
+  const diff = (((padNote(pitchConfig, pad) - padNote(pitchConfig, 0)) % 12) + 12) % 12;
+  return diff === 0 ? 'root' : diff === 7 ? 'fifth' : null;
+}
+
 export function createSynthModule(overrides = {}) {
   const params = {
     env: { ...DEFAULT_ENV, a: 0.02, r: 0.4 },
     pitchConfig: { mode: 'scale', root: 'C', scale: 'pentatonicMinor', octaves: 1 },
     octave: 0,
+    glide: 0,
     ...overrides,
     oscs: cleanOscs(overrides.oscs),
   };
   params.octave = clamp(Math.round(Number(params.octave)) || 0, -2, 2);
+  params.glide = clamp(Number(params.glide) || 0, 0, 1);
   const voices = new Map(); // pad -> the sounding voice
   const m = makeModule('synth', params, { held: voices }, buildPitchPool(params.pitchConfig), () => {});
   let audio = null;
   m.attach = (ctx, dest) => { audio = { ctx, dest }; };
   m.tick = () => {}; // nothing is scheduled: the player is the clock
   m.padNote = (pad) => padNote(m.params.pitchConfig, pad, m.params.octave);
+  m.padRole = (pad) => padRole(m.params.pitchConfig, pad);
   m.noteOn = (pad) => {
     if (!audio || m.disposed || !m.running || !Number.isInteger(pad) || pad < 0 || pad >= PADS) return;
     voices.get(pad)?.release();
@@ -303,6 +313,18 @@ export function createSynthModule(overrides = {}) {
   m.noteOff = (pad) => {
     voices.get(pad)?.release();
     voices.delete(pad);
+  };
+  // A finger sliding from one pad to the next: with portamento the held note glides to the new pitch (legato), else a new note.
+  m.slide = (from, to) => {
+    const v = voices.get(from);
+    if (!v || m.params.glide <= 0 || voices.has(to) || !Number.isInteger(to) || to < 0 || to >= PADS) {
+      m.noteOff(from);
+      m.noteOn(to);
+      return;
+    }
+    voices.delete(from);
+    voices.set(to, v);
+    v.glideTo(midiToFreq(m.padNote(to)), m.params.glide);
   };
   m.releaseAll = () => {
     for (const v of voices.values()) v.release();

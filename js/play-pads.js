@@ -3,9 +3,12 @@ const el = (tag, props = {}) => Object.assign(document.createElement(tag), props
 /**
  * A 4 x 4 grid of pads for playing by touch, the lowest note bottom left, rising to the right and then upwards. A pad
  * sounds while it is held: `onDown(i)` on the press, `onUp(i)` on the release (a finger, a mouse button, Enter or Space).
- * Every pad has its own pointer, so several fingers play a chord. `label(i)` gives the text on a pad; `setLabels` repaints them.
+ * A finger that slides to the next pad calls `onSlide(from, to)` when given (a legato glide), else `onUp` and `onDown`.
+ * Every pad has its own pointer, so several fingers play a chord. `label(i)` gives the text on a pad, `role(i)` marks
+ * the root ('root') or the fifth ('fifth') so they are tinted; `setLabels` repaints both. `setLayout('keys')` puts all 16 in one row of tall keys that touch (easy to slide across); `setLayout('kalimba')` lays the
+ * first 15 pads out as the tines of a kalimba (the lowest in the middle, rising alternately to the left and the right).
  */
-export function createPlayPads({ onDown, onUp, label = String, ariaLabel = 'play pads' }) {
+export function createPlayPads({ onDown, onUp, onSlide, label = String, role = () => null, ariaLabel = 'play pads', layout = 'grid' }) {
   const node = el('div', { className: 'pads play-pads' });
   node.setAttribute('role', 'group');
   node.setAttribute('aria-label', ariaLabel);
@@ -43,8 +46,6 @@ export function createPlayPads({ onDown, onUp, label = String, ariaLabel = 'play
       pads[i] = b;
     }
   }
-  // In the DOM order of the grid (top row first).
-  node.append(...[12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3].map((i) => pads[i]));
   // Pointers: a finger or the mouse plays the pad under it and slides to the next one without lifting (the node holds the capture).
   const at = (e) => {
     const t = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-pad]');
@@ -54,6 +55,15 @@ export function createPlayPads({ onDown, onUp, label = String, ariaLabel = 'play
   const moveTo = (id, i) => {
     const prev = under.get(id);
     if (prev === i) return;
+    if (onSlide && prev !== undefined && i !== null && !held.has(i)) {
+      under.set(id, i);
+      held.delete(prev);
+      pads[prev].classList.remove('down');
+      held.set(i, id);
+      pads[i].classList.add('down');
+      onSlide(prev, i);
+      return;
+    }
     if (prev !== undefined) lift(prev, pads[prev]);
     if (i === null) under.delete(id);
     else {
@@ -77,20 +87,21 @@ export function createPlayPads({ onDown, onUp, label = String, ariaLabel = 'play
   node.addEventListener('pointercancel', end);
   node.addEventListener('lostpointercapture', end);
 
-  // Computer keys while the pads are on screen (the open card), when no field is being typed in.
-  const KEYS = ['z', 'x', 'c', 'v', 'a', 's', 'd', 'f', 'q', 'w', 'e', 'r', '1', '2', '3', '4'];
+  // Computer keys while the pads are on screen (the open card), when no field is being typed in. By the physical key
+  // (a Czech keyboard has Y where a US one has Z), so it plays the same on every layout.
+  const CODES = ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyQ', 'KeyW', 'KeyE', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4'];
   const typing = (t) => t instanceof Element && t.closest('input, select, textarea, [contenteditable]');
   const onKeyDown = (e) => {
     if (!node.isConnected) return void removeListeners();
     if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !node.closest('.card.open')) return;
-    const i = KEYS.indexOf(e.key.toLowerCase());
-    if (i < 0) return;
+    const i = CODES.indexOf(e.code);
+    if (i < 0 || pads[i].hidden) return;
     e.preventDefault();
-    press(i, `kb:${e.key.toLowerCase()}`, pads[i]);
+    press(i, `kb:${e.code}`, pads[i]);
   };
   const onKeyUp = (e) => {
-    const i = KEYS.indexOf(e.key.toLowerCase());
-    if (i >= 0 && held.get(i) === `kb:${e.key.toLowerCase()}`) lift(i, pads[i]);
+    const i = CODES.indexOf(e.code);
+    if (i >= 0 && held.get(i) === `kb:${e.code}`) lift(i, pads[i]);
   };
   const letGo = () => { for (const i of [...held.keys()]) lift(i, pads[i]); };
   function removeListeners() {
@@ -106,16 +117,37 @@ export function createPlayPads({ onDown, onUp, label = String, ariaLabel = 'play
   const setLabels = () => {
     pads.forEach((b, i) => {
       const t = label(i);
-      if (t === shown[i]) return;
-      shown[i] = t;
+      const r = role(i) ?? '';
+      if (`${t}|${r}` === shown[i]) return;
+      shown[i] = `${t}|${r}`;
       b.textContent = t;
-      if (KEYS[pads.indexOf(b)]) b.title = `key ${KEYS[pads.indexOf(b)]}`;
+      if (r) b.dataset.role = r;
+      else delete b.dataset.role;
     });
   };
+  const GRID_ORDER = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3];
+  const TINES = 15;
+  // Left to right: the longest tine (the lowest note) in the middle, the next ones alternately on its left and right.
+  const KALIMBA_ORDER = [13, 11, 9, 7, 5, 3, 1, 0, 2, 4, 6, 8, 10, 12, 14];
+  const KEYS_ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]; // one row, the lowest on the left, like the keys of a volca sample
+  function setLayout(next) {
+    const kalimba = next === 'kalimba';
+    node.className = kalimba ? 'play-pads kalimba' : next === 'keys' ? 'play-pads pad-keys' : 'pads play-pads';
+    pads.forEach((b, i) => {
+      b.classList.toggle('tine', kalimba);
+      b.hidden = kalimba && i >= TINES;
+      if (kalimba && i < TINES) b.style.setProperty('--len', String(Math.ceil(i / 2)));
+      else b.style.removeProperty('--len');
+    });
+    node.append(...(kalimba ? KALIMBA_ORDER : next === 'keys' ? KEYS_ORDER : GRID_ORDER).map((i) => pads[i]));
+    for (const i of [...held.keys()]) if (pads[i].hidden) lift(i, pads[i]);
+  }
+  setLayout(layout);
   setLabels();
   return {
     node,
     setLabels,
+    setLayout,
     /** Lifts every pad that is held (the module stopped). */
     releaseAll() {
       for (const i of [...held.keys()]) lift(i, pads[i]);

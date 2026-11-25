@@ -275,7 +275,8 @@ export function createDroneVoice(ctx, dest, { freq, wave, peak, fade, wave2, mix
 
 /**
  * A held note for live playing: up to three oscillators (`{ wave, level, octave, detune }`, a level of 0 is off) through
- * one ADSR envelope. It sounds until `release()`; the release time comes from `env.r`. Returns `{ release, kill }`.
+ * one ADSR envelope. It sounds until `release()`; the release time comes from `env.r`. `glideTo(freq, seconds)`
+ * moves the held note to another pitch smoothly, without a new attack. Returns `{ release, glideTo, kill }`.
  */
 export function startVoice(ctx, dest, { freq, oscs, env = DEFAULT_ENV, peak = 0.5 }) {
   const { a, d, s, r } = env;
@@ -306,6 +307,16 @@ export function startVoice(ctx, dest, { freq, oscs, env = DEFAULT_ENV, peak = 0.
   if (sources.length) sources[0].onended = free;
   else free();
   return {
+    glideTo(next, seconds) {
+      if (done) return;
+      const now = ctx.currentTime;
+      active.forEach((o, i) => {
+        const f = sources[i].frequency;
+        f.cancelScheduledValues(now);
+        f.setValueAtTime(f.value, now);
+        f.exponentialRampToValueAtTime(next * Math.pow(2, o.octave ?? 0), now + Math.max(0.005, seconds));
+      });
+    },
     release() {
       if (done) return;
       done = true;

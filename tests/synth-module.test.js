@@ -75,3 +75,43 @@ test('a voice with no sounding oscillator makes no sound and does not throw', ()
   v.release();
   v.kill();
 });
+
+test('padRole marks the root and the fifth of the scale in every octave', async () => {
+  const { padRole } = await import('../js/module.js');
+  const cfg = { mode: 'scale', root: 'C', scale: 'major', octaves: 1 };
+  assert.equal(padRole(cfg, 0), 'root');
+  assert.equal(padRole(cfg, 4), 'fifth'); // C D E F G
+  assert.equal(padRole(cfg, 7), 'root'); // the next C
+  assert.equal(padRole(cfg, 11), 'fifth');
+  assert.equal(padRole(cfg, 1), null);
+});
+
+test('with portamento a slide from pad to pad glides the held note instead of playing a new one', () => {
+  const m = createSynthModule({ glide: 0.2 });
+  assert.equal(m.params.glide, 0.2);
+  m.setParam('glide', 5);
+  assert.equal(m.params.glide, 1);
+  m.setParam('glide', 0.2);
+  const log = [];
+  const ctx = {
+    currentTime: 0,
+    createGain: () => ({ gain: { value: 1, setValueAtTime() {}, linearRampToValueAtTime() {}, cancelScheduledValues() {}, setTargetAtTime() {} }, connect(n) { return n; }, disconnect() {} }),
+    createOscillator: () => ({
+      frequency: { value: 0, cancelScheduledValues() {}, setValueAtTime() {}, exponentialRampToValueAtTime: (v, t) => log.push(['ramp', v, t]) },
+      detune: {}, connect(n) { return n; }, disconnect() {}, start: () => log.push(['start']), stop() {},
+    }),
+  };
+  m.attach(ctx, {});
+  m.start();
+  m.noteOn(0);
+  const started = log.filter((r) => r[0] === 'start').length;
+  m.slide(0, 2);
+  assert.equal(log.filter((r) => r[0] === 'start').length, started); // no new voice
+  assert.ok(log.some((r) => r[0] === 'ramp'));
+  assert.deepEqual([...m.state.held.keys()], [2]);
+  assert.equal(cleanModule(serializeModule(m)).params.glide, 0.2);
+  m.setParam('glide', 0);
+  m.slide(2, 3); // without portamento it is a new note
+  assert.ok(log.filter((r) => r[0] === 'start').length > started);
+  assert.deepEqual([...m.state.held.keys()], [3]);
+});
