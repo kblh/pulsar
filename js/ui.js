@@ -764,9 +764,13 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     button: addBtn,
     panel: addMenuEl,
     render(panel) {
+      panel.classList.add('menu-grid');
+      let group = null;
       for (const item of addMenuItems({ hasWorklet: engine.hasWorklet(), hasSequence: !!engine.sequence })) {
         const run = item.id.startsWith('fx:') ? () => addEffect(item.id.slice(3)) : addActions[item.id];
-        panel.append(menuItem({ icon: item.icon, label: item.label, onSelect: run }));
+        if (group !== null && item.group !== group) panel.append(el('div', { className: 'menu-sep', role: 'separator' }));
+        group = item.group;
+        panel.append(menuItem({ icon: item.icon, label: item.label, onSelect: run, tile: item.tile }));
       }
     },
   });

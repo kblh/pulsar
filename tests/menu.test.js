@@ -24,6 +24,13 @@ test('the sequence is offered only while there is none', () => {
   assert.ok(!ids({ hasWorklet: true, hasSequence: true }).includes('sequence'));
 });
 
+test('modules and effects are tiles, the rest take a row, and the groups follow each other', () => {
+  const items = addMenuItems({ hasWorklet: true, hasSequence: false });
+  for (const i of items) assert.equal(Boolean(i.tile), ['modules', 'fx'].includes(i.group), i.id);
+  const order = items.map((i) => i.group).filter((g, n, a) => g !== a[n - 1]);
+  assert.deepEqual(order, ['modules', 'synth', 'fx', 'sequence', 'import']);
+});
+
 test('every item has a known icon, a label and a unique id', () => {
   const items = addMenuItems({ hasWorklet: true, hasSequence: false });
   assert.equal(new Set(items.map((i) => i.id)).size, items.length);

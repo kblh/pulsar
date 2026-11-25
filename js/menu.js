@@ -2,28 +2,31 @@ import { icon } from './icons.js';
 import { FX_TYPES, FX_NEEDS_WORKLET } from './fx.js';
 import { FX_LABELS } from './fx-fields.js';
 
-/** What the `+` menu offers right now. Pure: the caller decides what each id does. */
+/**
+ * What the `+` menu offers right now. Pure: the caller decides what each id does. `tile` items are shown three to a row,
+ * icon above the label; the rest take a whole row. `group` tells where a divider goes.
+ */
 export function addMenuItems({ hasWorklet, hasSequence }) {
   const items = [
-    { id: 'melodic', icon: 'note', label: 'melodic' },
-    { id: 'rhythmic', icon: 'drum', label: 'rhythmic' },
-    { id: 'drone', icon: 'wave', label: 'drone' },
-    { id: 'synth', icon: 'pads', label: 'synth' },
+    { id: 'melodic', icon: 'note', label: 'melodic', group: 'modules', tile: true },
+    { id: 'rhythmic', icon: 'drum', label: 'rhythmic', group: 'modules', tile: true },
+    { id: 'drone', icon: 'wave', label: 'drone', group: 'modules', tile: true },
+    { id: 'synth', icon: 'pads', label: 'synth', group: 'synth' },
   ];
   for (const type of FX_TYPES) {
     if (FX_NEEDS_WORKLET.includes(type) && !hasWorklet) continue;
-    items.push({ id: `fx:${type}`, icon: 'fx', label: FX_LABELS[type] ?? type });
+    items.push({ id: `fx:${type}`, icon: 'fx', label: FX_LABELS[type] ?? type, group: 'fx', tile: true });
   }
-  if (!hasSequence) items.push({ id: 'sequence', icon: 'list', label: 'sequence' });
-  items.push({ id: 'import', icon: 'import', label: 'import module' });
+  if (!hasSequence) items.push({ id: 'sequence', icon: 'list', label: 'sequence', group: 'sequence' });
+  items.push({ id: 'import', icon: 'import', label: 'import module', group: 'import' });
   return items;
 }
 
 /** A menu row: icon and visible label. Selecting it closes the menu unless `keepOpen`. */
-export function menuItem({ icon: iconName, label, onSelect, disabled = false, keepOpen = false }) {
+export function menuItem({ icon: iconName, label, onSelect, disabled = false, keepOpen = false, tile = false }) {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'menu-item';
+  b.className = tile ? 'menu-item menu-tile' : 'menu-item';
   b.setAttribute('role', 'menuitem');
   const text = document.createElement('span');
   text.textContent = label;
