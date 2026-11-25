@@ -262,7 +262,7 @@ input[type=range] { flex: 1 1 8ch; accent-color: var(--accent); padding: 0; }
   display: flex; align-items: flex-end; gap: 4px; height: 200px; width: 100%;
 }
 .play-pads.kalimba .play-pad.tine {
-  flex: 1 1 0; min-width: 0; min-height: 0; aspect-ratio: auto; height: calc(100% - var(--len, 0) * 9%);
+  flex: 1 1 0; min-width: 0; min-height: 0; aspect-ratio: auto; height: calc(100% - var(--len, 0) * 12%);
   display: flex; align-items: flex-start; justify-content: center; padding: 6px 0 0; border-radius: 4px 4px 8px 8px; font-size: 10px;
 }
 .play-pads.pad-keys { display: flex; gap: 0; height: 140px; width: 100%; }

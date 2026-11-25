@@ -6,7 +6,7 @@ const el = (tag, props = {}) => Object.assign(document.createElement(tag), props
  * A finger that slides to the next pad calls `onSlide(from, to)` when given (a legato glide), else `onUp` and `onDown`.
  * Every pad has its own pointer, so several fingers play a chord. `label(i)` gives the text on a pad, `role(i)` marks
  * the root ('root') or the fifth ('fifth') so they are tinted; `setLabels` repaints both. `setLayout('keys')` puts all 16 in one row of tall keys that touch (easy to slide across); `setLayout('kalimba')` lays the
- * first 15 pads out as the tines of a kalimba (the lowest in the middle, rising alternately to the left and the right).
+ * first 9 pads out as the tines of a kalimba (the lowest in the middle, rising alternately to the left and the right).
  */
 export function createPlayPads({ onDown, onUp, onSlide, label = String, role = () => null, ariaLabel = 'play pads', layout = 'grid' }) {
   const node = el('div', { className: 'pads play-pads' });
@@ -126,9 +126,9 @@ export function createPlayPads({ onDown, onUp, onSlide, label = String, role = (
     });
   };
   const GRID_ORDER = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3];
-  const TINES = 15;
+  const TINES = 9;
   // Left to right: the longest tine (the lowest note) in the middle, the next ones alternately on its left and right.
-  const KALIMBA_ORDER = [13, 11, 9, 7, 5, 3, 1, 0, 2, 4, 6, 8, 10, 12, 14];
+  const KALIMBA_ORDER = [7, 5, 3, 1, 0, 2, 4, 6, 8];
   const KEYS_ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]; // one row, the lowest on the left, like the keys of a volca sample
   function setLayout(next) {
     const kalimba = next === 'kalimba';
