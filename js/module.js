@@ -1,4 +1,4 @@
-import { buildPitchPool, midiToFreq, parseNote } from './scales.js';
+import { buildPitchPool, melodicPool, midiToFreq, parseNote, OCTAVE_SHIFT_MAX, RAND_OCTAVES_MAX } from './scales.js';
 import { pickChange, nextChangeDelay, clampFade } from './drone.js';
 import { createTrack, advance } from './track.js';
 import { stepDuration, effectiveBpm } from './timing.js';
@@ -48,8 +48,9 @@ const evolved = (pattern) => ({ current: pattern, base: [...pattern] });
 const LIMITS = {
   bpm: [20, 300, false],
   swing: [0, 1, true],
-  randomize: [1, 10, false],
-  rhythmMod: [1, 10, false],
+  randomize: [0, 10, false],
+  rhythmMod: [0, 10, false],
+  randOctaves: [0, RAND_OCTAVES_MAX, false],
   octave: [-2, 2, false],
   glide: [0, 0.15, true],
 };
@@ -73,6 +74,21 @@ function withOscParams(params, overrides) {
   return out;
 }
 
+/** A melodic pitch config: one octave of the scale, moved by `octave` (the pool repeats it upward, see `melodicPool`). */
+function cleanMelodicConfig(c) {
+  const octave = Math.round(Number(c?.octave));
+  return { ...c, octaves: 1, octave: Number.isFinite(octave) ? clamp(octave, -OCTAVE_SHIFT_MAX, OCTAVE_SHIFT_MAX) : 0 };
+}
+
+/** Rebuilds the pool after the pitch config (or the octaves the notes may climb) changed, and keeps the melody inside it. */
+function refreshPool(m) {
+  m.pool = m.type === 'melodic' ? melodicPool(m.params.pitchConfig, m.params.randOctaves) : buildPitchPool(m.params.pitchConfig);
+  if (!m.state.melody) return; // the live synth has no melody to fit
+  const max = m.pool.length - 1;
+  const fit = (a) => a.map((i) => Math.min(i, max));
+  m.state.melody = { current: fit(m.state.melody.current), base: fit(m.state.melody.base) };
+}
+
 function applyParam(m, key, value) {
   if (key === 'wave2' || key === 'mix' || key === 'detune') {
     if (key in m.params) applyOscParam(m.params, key, value); // the rhythmic module has none
@@ -81,6 +97,7 @@ function applyParam(m, key, value) {
     if (!Number.isFinite(n)) return;
     const [lo, hi, float] = LIMITS[key];
     m.params[key] = clamp(float ? n : Math.round(n), lo, hi);
+    if (key === 'randOctaves') refreshPool(m);
   } else if (key.startsWith('voice:')) {
     const v = key.slice(6);
     if (!DRUMS.includes(v)) return;
@@ -122,12 +139,8 @@ function applyParam(m, key, value) {
     }
     m.params.env = env;
   } else if (key === 'pitchConfig') {
-    m.params.pitchConfig = value;
-    m.pool = buildPitchPool(value);
-    if (!m.state.melody) return; // the live synth has no melody to fit
-    const max = m.pool.length - 1;
-    const fit = (a) => a.map((i) => Math.min(i, max));
-    m.state.melody = { current: fit(m.state.melody.current), base: fit(m.state.melody.base) };
+    m.params.pitchConfig = m.type === 'melodic' ? cleanMelodicConfig(value) : value;
+    refreshPool(m);
   } else {
     m.params[key] = value;
   }
@@ -184,18 +197,23 @@ export function createMelodicModule(overrides = {}) {
     wave: 'triangle',
     env: { ...DEFAULT_ENV },
     bpm: 90 + Math.floor(Math.random() * 51),
-    pitchConfig: { mode: 'scale', root: 'C', scale: 'pentatonicMinor', octaves: 2 },
+    pitchConfig: { mode: 'scale', root: 'C', scale: 'pentatonicMinor' },
     rhythm: pick(Object.values(RHYTHM_PRESETS)),
     swing: 0,
-    randomize: 3,
-    rhythmMod: 3,
+    randomize: 5, // how much the notes change (0 = not at all)
+    rhythmMod: 5, // how much the rhythm changes (0 = not at all)
+    randOctaves: 0, // how many octaves above the base one the notes may climb to
     evolution: 'drift',
     ...overrides,
   };
   Object.assign(params, withOscParams(params, overrides));
-  const pool = buildPitchPool(params.pitchConfig);
+  params.pitchConfig = cleanMelodicConfig(params.pitchConfig);
+  const ro = Math.round(Number(params.randOctaves));
+  params.randOctaves = Number.isFinite(ro) ? clamp(ro, 0, RAND_OCTAVES_MAX) : 0;
+  const pool = melodicPool(params.pitchConfig, params.randOctaves);
+  const baseSize = melodicPool(params.pitchConfig, 0).length; // the first melody stays in the base octave
   const state = {
-    melody: evolved(randomMelody(16, pool.length, Math.random)),
+    melody: evolved(randomMelody(16, baseSize, Math.random)),
     rhythm: evolved(parsePattern(params.rhythm)),
   };
   const m = makeModule('melodic', params, state, pool, (mod, ctx, dest, time, step) => {
@@ -214,10 +232,18 @@ export function createMelodicModule(overrides = {}) {
   });
   m.mutateBar = () => {
     const p = m.params;
-    if (m.bars % mutationEvery(p.randomize) === 0) {
-      m.state.melody = mutateMelody(m.state.melody, { level: p.randomize, mode: p.evolution, poolSize: m.pool.length }, Math.random);
+    if (p.randomize > 0 && m.bars % mutationEvery(p.randomize) === 0) {
+      m.state.melody = mutateMelody(m.state.melody, {
+        level: p.randomize,
+        mode: p.evolution,
+        poolSize: m.pool.length,
+        amount: Math.ceil(p.randomize * 0.8), // level 10 changes half of the steps in every loop
+        active: m.state.rhythm.current,
+        octaveSize: melodicPool(p.pitchConfig, 0).length,
+        octaves: p.randOctaves,
+      }, Math.random);
     }
-    if (m.bars % mutationEvery(p.rhythmMod) === 0) {
+    if (p.rhythmMod > 0 && m.bars % mutationEvery(p.rhythmMod) === 0) {
       m.state.rhythm = mutateRhythm(m.state.rhythm, { level: p.rhythmMod, mode: p.evolution }, Math.random);
     }
   };
@@ -261,7 +287,7 @@ export function createRhythmicModule(overrides = {}) {
   });
   m.mutateBar = () => {
     const p = m.params;
-    if (m.bars % mutationEvery(p.rhythmMod) !== 0) return;
+    if (!(p.rhythmMod > 0) || m.bars % mutationEvery(p.rhythmMod) !== 0) return;
     for (const d of DRUMS) {
       m.state.voices[d] = mutateRhythm(m.state.voices[d], { level: p.rhythmMod, mode: p.evolution }, Math.random);
     }

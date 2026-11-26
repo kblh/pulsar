@@ -242,3 +242,24 @@ test('the melodic rhythm still keeps one hit', () => {
   m.setParam('rhythm', '................');
   assert.equal(m.state.rhythm.current.some(Boolean), true);
 });
+
+test('melodic: the first melody stays in the base octave, randomize octaves lets it climb', () => {
+  const m = createMelodicModule({ randOctaves: 2 });
+  assert.equal(m.pool.length, 15);
+  assert.ok(m.state.melody.current.every((i) => i < 5));
+  m.setParam('randOctaves', 0);
+  assert.equal(m.pool.length, 5);
+  m.setParam('randOctaves', 9);
+  assert.equal(m.params.randOctaves, 2);
+});
+
+test('melodic: octave knob moves the pool, notes and rhythm knobs at 0 freeze them', () => {
+  const m = createMelodicModule({ randomize: 0, rhythmMod: 0, rhythm: 'x...x...x...x...' });
+  assert.equal(m.params.pitchConfig.octave, 0);
+  const low = m.pool[0];
+  m.setParam('pitchConfig', { ...m.params.pitchConfig, octave: 2 });
+  assert.equal(m.pool[0], low + 24);
+  const before = JSON.stringify(m.state);
+  for (let i = 0; i < 40; i++) m.mutateBar.call(m, (m.bars = i + 1));
+  assert.equal(JSON.stringify(m.state), before);
+});

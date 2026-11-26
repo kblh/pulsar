@@ -1,4 +1,4 @@
-import { SCALES, pitchClasses, toggleClass } from './scales.js';
+import { SCALES, pitchClasses, toggleClass, OCTAVE_SHIFT_MAX, RAND_OCTAVES_MAX } from './scales.js';
 import { flipStep, formatPattern, isOnlyHit } from './rhythm.js';
 import { createStepGrid } from './step-grid.js';
 import { createRhythmCircle } from './rhythm-circle.js';
@@ -106,9 +106,9 @@ function gridRow(name, getPattern, getPitches) {
   };
 }
 
-function pitchRows(m, { withNotes, withOctaves = true }) {
+function pitchRows(m, { withNotes, withOctaves = true, melodic = false }) {
   const cfg = () => ({ ...m.params.pitchConfig });
-  const setCfg = (k) => (v) => m.setParam('pitchConfig', { ...cfg(), notes: cfg().notes ?? 'C4 E4 G4 A4', [k]: k === 'octaves' ? Number(v) : v });
+  const setCfg = (k) => (v) => m.setParam('pitchConfig', { ...cfg(), notes: cfg().notes ?? 'C4 E4 G4 A4', [k]: k === 'octaves' || k === 'octave' ? Number(v) : v });
   const c = m.params.pitchConfig;
   const octaves = createKnob({
     min: 1, max: 4, step: 1, format: String, label: 'octaves', ariaLabel: 'octaves', value: c.octaves ?? 2, defaultValue: 2,
@@ -117,19 +117,35 @@ function pitchRows(m, { withNotes, withOctaves = true }) {
       octaves.set(m.params.pitchConfig.octaves ?? 2);
     },
   });
+  // The octave the melodic module plays in: in the middle at first, three steps down and three up.
+  const octave = createKnob({
+    min: -OCTAVE_SHIFT_MAX, max: OCTAVE_SHIFT_MAX, step: 1, format: (v) => (v > 0 ? `+${v}` : String(v)), label: 'octave', ariaLabel: 'octave',
+    value: c.octave ?? 0, defaultValue: 0,
+    onInput: (v) => {
+      setCfg('octave')(v);
+      octave.set(m.params.pitchConfig.octave ?? 0);
+    },
+  });
   const mode = createSegmented({ options: ['scale', 'notes'], value: c.mode, ariaLabel: 'pitch mode', onChange: setCfg('mode') });
+  const scaleSelect = select(Object.keys(SCALES), c.scale ?? 'pentatonicMinor', setCfg('scale'));
+  const rootSelect = select(ROOTS, c.root ?? 'C', setCfg('root'));
   const rows = [
-    field('pitch', mode.node),
-    field('root and scale', el('div', { className: 'pair' },
-      select(ROOTS, c.root ?? 'C', setCfg('root')), select(Object.keys(SCALES), c.scale ?? 'pentatonicMinor', setCfg('scale')))),
+    field(melodic ? 'scale' : 'pitch', mode.node),
+    field(melodic ? 'root and scale' : 'root and scale', el('div', { className: 'pair' }, rootSelect, scaleSelect)),
     ...(withOctaves ? [knobs(octaves.node)] : []),
+    ...(melodic ? [knobs(octave.node)] : []),
     ...(withNotes ? [field('notes', text(c.notes ?? 'C4 E4 G4 A4', setCfg('notes')))] : []),
   ];
   let shown = c.mode;
+  // Only a scale has a choice of scale: in notes mode (or once a key outside it is picked) just the root is left.
+  const showScale = () => { if (melodic) scaleSelect.hidden = m.params.pitchConfig.mode !== 'scale'; };
+  showScale();
   rows.syncMode = () => { // the keyboard can switch the mode
     const now = m.params.pitchConfig.mode;
     if (now !== shown) mode.set((shown = now));
+    showScale();
   };
+  rows.syncMode.octave = () => octave.set(m.params.pitchConfig.octave ?? 0);
   return rows;
 }
 
@@ -170,7 +186,7 @@ function notePicker({ keyboard, circle }) {
 }
 
 function melodicControls(m, live) {
-  const pitch = pitchRows(m, { withNotes: false });
+  const pitch = pitchRows(m, { withNotes: false, withOctaves: false, melodic: true });
   const set = (k) => (v) => m.setParam(k, v);
   const toggle = (pc) => {
     m.setParam('pitchConfig', toggleClass(m.params.pitchConfig, pc));
@@ -189,6 +205,8 @@ function melodicControls(m, live) {
     pitch.syncMode();
     keyboard.set(pitchClasses(m.params.pitchConfig));
     rhythmGrid.set(m.state.rhythm.current);
+    // the note each sounding step plays now (the melody evolves, so this follows it)
+    rhythmGrid.setLabels(m.state.rhythm.current.map((on, i) => (on ? midiName(m.pool[Math.min(m.state.melody.current[i], m.pool.length - 1)]) : '')));
   };
   paint();
   live.push({ update: (playhead) => { paint(); rhythmGrid.setPlayhead(playhead); } });
@@ -206,12 +224,13 @@ function melodicControls(m, live) {
       bpmKnob(m),
       paramKnob('swing', m, 'swing', { min: 0, max: 1, step: 0.05, format: pct, defaultValue: 0 }),
     )),
-    group('pitch', ...pitch, field('notes', keyboard.node)),
-    group('rhythm',
-      field('steps', rhythmGrid.node),
+    group('scale', ...pitch, field('notes', keyboard.node)),
+    group('rhythm', field('steps', rhythmGrid.node)),
+    group('randomize',
       knobs(
-        paramKnob('randomize', m, 'randomize', { min: 1, max: 10, step: 1 }),
-        paramKnob('rhythm mod', m, 'rhythmMod', { min: 1, max: 10, step: 1 }),
+        paramKnob('notes', m, 'randomize', { min: 0, max: 10, step: 1, defaultValue: 5 }),
+        paramKnob('octaves', m, 'randOctaves', { min: 0, max: RAND_OCTAVES_MAX, step: 1, defaultValue: 0 }),
+        paramKnob('rhythm', m, 'rhythmMod', { min: 0, max: 10, step: 1, defaultValue: 5 }),
       ),
       field('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution')))),
   ];

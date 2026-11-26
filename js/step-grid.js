@@ -35,6 +35,13 @@ export function createStepGrid({ ariaLabel, onToggle, max = 16 }) {
         b.setAttribute('aria-pressed', String(v));
       });
     },
+    /** Writes a short text on each pad (a note name), '' for none; only a pad whose text changed is touched. */
+    setLabels(labels) {
+      pads.forEach((b, i) => {
+        const t = labels[i] ?? '';
+        if (b.textContent !== t) b.textContent = t;
+      });
+    },
     setPlayhead(i) {
       if (i === now) return;
       pads[now]?.classList.remove('now');

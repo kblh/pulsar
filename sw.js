@@ -1,4 +1,4 @@
-const CACHE = 'pulsar-v70';
+const CACHE = 'pulsar-v73';
 const FILES = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',

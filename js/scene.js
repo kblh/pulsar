@@ -14,7 +14,7 @@ export const MAX_MODULES = 64;
 export const MAX_EFFECTS = 32;
 const MAX_PATTERN = 64;
 export const DEFAULT_SEND_LEVEL = 0.3;
-const NUMBER_KEYS = { melodic: ['bpm', 'swing', 'randomize', 'rhythmMod'], rhythmic: ['bpm', 'swing', 'rhythmMod'], drone: ['rate', 'maxExtra', 'fade'], synth: ['glide'] };
+const NUMBER_KEYS = { melodic: ['bpm', 'swing', 'randomize', 'rhythmMod', 'randOctaves'], rhythmic: ['bpm', 'swing', 'rhythmMod'], drone: ['rate', 'maxExtra', 'fade'], synth: ['glide'] };
 
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
@@ -93,6 +93,7 @@ function cleanPitchConfig(c) {
   if (ROOTS.includes(c.root)) out.root = c.root;
   if (Object.hasOwn(SCALES, c.scale)) out.scale = c.scale;
   if (isNum(c.octaves)) out.octaves = clamp(Math.round(c.octaves), 1, 4);
+  if (isNum(c.octave)) out.octave = clamp(Math.round(c.octave), -3, 3);
   if (typeof c.notes === 'string') out.notes = c.notes.slice(0, 200);
   return out;
 }

@@ -291,6 +291,7 @@ input[type=range] { flex: 1 1 8ch; accent-color: var(--accent); padding: 0; }
 .pad {
   min-width: 44px; min-height: 44px; aspect-ratio: 1; border: 1px solid var(--line); border-radius: 4px; background: transparent;
 }
+.pad { padding: 0; font-size: 12px; color: var(--fg); }
 .pad[aria-pressed=true] { background: color-mix(in srgb, var(--accent) 35%, transparent); border-color: var(--accent); }
 .play-pads { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; grid-template-columns: repeat(4, minmax(56px, 84px)); }
 .play-pad { font-size: 12px; color: var(--dim); }
@@ -433,3 +434,4 @@ body.tempo-on .bpm-row { opacity: 0.45; }
 .ring-step:focus-visible { stroke: var(--fg); stroke-width: 3; }
 .rhythm-msg { min-height: 1.2em; text-align: center; }
 .field[hidden] { display: none; }
+.pair select[hidden] { display: none; }

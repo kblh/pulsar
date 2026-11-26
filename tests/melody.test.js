@@ -56,3 +56,18 @@ test('randomMelody has requested length and valid indices', () => {
   assert.equal(m.length, 16);
   assert.ok(m.every((v) => Number.isInteger(v) && v >= 0 && v < 5));
 });
+
+test('mutateMelody changes only steps that sound, and octaves lift notes by whole octaves', () => {
+  const current = Array(16).fill(0);
+  const active = current.map((_, i) => i % 4 === 0);
+  const r = mutateMelody({ current, base: [...current] }, { level: 10, mode: 'walk', poolSize: 15, amount: 8, active, octaveSize: 5, octaves: 2 }, Math.random);
+  r.current.forEach((v, i) => { if (!active[i]) assert.equal(v, 0); });
+  assert.ok(r.current.some((v) => v !== 0));
+  let climbed = false;
+  for (let k = 0; k < 50; k++) {
+    const x = mutateMelody({ current, base: [...current] }, { level: 10, mode: 'walk', poolSize: 15, amount: 8, octaveSize: 5, octaves: 2 }, Math.random);
+    if (x.current.some((v) => v >= 5)) climbed = true;
+    assert.ok(x.current.every((v) => v < 15));
+  }
+  assert.ok(climbed);
+});

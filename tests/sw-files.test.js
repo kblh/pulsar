@@ -11,5 +11,5 @@ test('the service worker caches every js file', () => {
 });
 
 test('the cache version is v36', () => {
-  assert.match(sw, /const CACHE = 'pulsar-v70'/);
+  assert.match(sw, /const CACHE = 'pulsar-v73'/);
 });

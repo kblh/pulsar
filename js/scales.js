@@ -63,6 +63,21 @@ export function buildPitchPool(cfg) {
   return pool;
 }
 
+export const OCTAVE_SHIFT_MAX = 3; // the melodic module's octave knob: 3 down, 3 up
+export const RAND_OCTAVES_MAX = 2; // how many octaves above the base one the notes may wander to
+
+/**
+ * The pool of a melodic module: one octave of the scale (or the chosen notes) moved by `cfg.octave` octaves, then
+ * repeated `up` octaves higher. An index past the first octave is therefore the same note an octave above.
+ */
+export function melodicPool(cfg, up = 0) {
+  const shift = 12 * Math.min(OCTAVE_SHIFT_MAX, Math.max(-OCTAVE_SHIFT_MAX, Math.round(Number(cfg?.octave) || 0)));
+  const base = buildPitchPool({ ...cfg, octaves: 1 });
+  const pool = [];
+  for (let o = 0; o <= up; o++) for (const n of base) pool.push(n + shift + 12 * o);
+  return pool;
+}
+
 /** The pitch classes (0-11) in the pool, ascending. */
 export function pitchClasses(cfg) {
   return [...new Set(buildPitchPool(cfg).map((n) => n % 12))].sort((a, b) => a - b);

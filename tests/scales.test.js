@@ -92,3 +92,12 @@ test('names written by toggleClass parse back', () => {
   assert.equal(cfg.notes, 'C4 Eb4');
   assert.deepEqual(pitchClasses(cfg), [0, 3]);
 });
+
+test('melodicPool: one octave moved by the octave knob, repeated upward', async () => {
+  const { melodicPool } = await import('../js/scales.js');
+  const cfg = { mode: 'scale', root: 'C', scale: 'pentatonicMinor' };
+  assert.deepEqual(melodicPool(cfg, 0), [48, 51, 53, 55, 58]);
+  assert.deepEqual(melodicPool({ ...cfg, octave: 1 }, 0), [60, 63, 65, 67, 70]);
+  assert.deepEqual(melodicPool({ ...cfg, octave: -9 }, 1), [12, 15, 17, 19, 22, 24, 27, 29, 31, 34]); // clamped to -3
+  assert.deepEqual(melodicPool({ mode: 'notes', notes: 'C4 E4' }, 2), [60, 64, 72, 76, 84, 88]);
+});
