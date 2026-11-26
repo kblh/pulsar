@@ -45,6 +45,7 @@ export function formatPattern(p) {
 
 const indices = (p, on) => p.flatMap((v, i) => (v === on ? [i] : []));
 const hitCount = (p) => p.filter(Boolean).length;
+const pick = (list, rng) => list[Math.floor(rng() * list.length)];
 
 /** Moves one hit to an empty neighbouring step; keeps density. */
 function shiftHit(p, rng) {
@@ -77,8 +78,10 @@ function flipHit(p, anchor, rng) {
  * pattern started with (carried through the returned state) so `walk` cannot decay
  * into random half-full noise.
  */
-export function mutateRhythm({ current, base, anchor }, { level, mode }, rng) {
-  const anchored = anchor ?? hitCount(base);
+export function mutateRhythm({ current, base, anchor }, { level, mode, density }, rng) {
+  // `density` (1-10), when given, replaces the starting density as the target: about that share of the steps sounds (10 = 3/4 of them),
+  // the count only oscillates around it.
+  const anchored = density > 0 ? Math.max(1, Math.round((density / 10) * 0.75 * current.length)) : (anchor ?? hitCount(base));
   if (anchored === 0) return { current: [...current], base: [...base], anchor: 0 }; // cleared by the user: stays empty
   const next = [...current];
   for (let n = mutationAmount(level); n > 0; n--) {
@@ -90,11 +93,15 @@ export function mutateRhythm({ current, base, anchor }, { level, mode }, rng) {
       if (next[i] !== base[i] && rng() < DRIFT_RETURN_CHANCE) next[i] = base[i];
     }
   }
+  if (density > 0) {
+    for (let n = hitCount(next); n > anchored + DENSITY_BAND; n--) next[pick(indices(next, true), rng)] = false;
+    for (let n = hitCount(next); n < anchored - DENSITY_BAND; n++) next[pick(indices(next, false), rng)] = true;
+  }
   if (!next.some(Boolean)) next[Math.floor(rng() * next.length)] = true;
   return {
     current: next,
     base: mode === 'walk' ? [...next] : [...base],
-    anchor: anchored,
+    anchor: density > 0 ? (anchor ?? hitCount(base)) : anchored,
   };
 }
 

@@ -1,4 +1,4 @@
-import { SCALES, pitchClasses, toggleClass, OCTAVE_SHIFT_MAX, RAND_OCTAVES_MAX } from './scales.js';
+import { SCALES, pitchClasses, toggleClass, melodicPool, OCTAVE_SHIFT_MAX, RAND_OCTAVES_MAX } from './scales.js';
 import { flipStep, formatPattern, isOnlyHit } from './rhythm.js';
 import { createStepGrid } from './step-grid.js';
 import { createRhythmCircle } from './rhythm-circle.js';
@@ -206,7 +206,10 @@ function melodicControls(m, live) {
     keyboard.set(pitchClasses(m.params.pitchConfig));
     rhythmGrid.set(m.state.rhythm.current);
     // the note each sounding step plays now (the melody evolves, so this follows it)
-    rhythmGrid.setLabels(m.state.rhythm.current.map((on, i) => (on ? midiName(m.pool[Math.min(m.state.melody.current[i], m.pool.length - 1)]) : '')));
+    const size = melodicPool(m.params.pitchConfig, 0).length; // the notes of one octave; an index past them is an octave higher
+    const idx = (i) => Math.min(m.state.melody.current[i], m.pool.length - 1);
+    const on = m.state.rhythm.current;
+    rhythmGrid.setLabels(on.map((o, i) => (o ? midiName(m.pool[idx(i)]) : '')), on.map((o, i) => (o ? Math.floor(idx(i) / size) : 0)));
   };
   paint();
   live.push({ update: (playhead) => { paint(); rhythmGrid.setPlayhead(playhead); } });
@@ -231,6 +234,7 @@ function melodicControls(m, live) {
         paramKnob('notes', m, 'randomize', { min: 0, max: 10, step: 1, defaultValue: 5 }),
         paramKnob('octaves', m, 'randOctaves', { min: 0, max: RAND_OCTAVES_MAX, step: 1, defaultValue: 0 }),
         paramKnob('rhythm', m, 'rhythmMod', { min: 0, max: 10, step: 1, defaultValue: 5 }),
+        paramKnob('density', m, 'density', { min: 1, max: 10, step: 1, defaultValue: 4 }),
       ),
       field('evolution', seg(['drift', 'walk'], m.params.evolution, 'evolution', set('evolution')))),
   ];

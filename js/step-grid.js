@@ -35,11 +35,13 @@ export function createStepGrid({ ariaLabel, onToggle, max = 16 }) {
         b.setAttribute('aria-pressed', String(v));
       });
     },
-    /** Writes a short text on each pad (a note name), '' for none; only a pad whose text changed is touched. */
-    setLabels(labels) {
+    /** Writes a short text on each pad (a note name), '' for none; `levels[i]` (0, 1, 2: the octave) sets how strong the pad is lit. Only a pad that changed is touched. */
+    setLabels(labels, levels = []) {
       pads.forEach((b, i) => {
         const t = labels[i] ?? '';
         if (b.textContent !== t) b.textContent = t;
+        const l = String(levels[i] ?? 0);
+        if (b.dataset.oct !== l) b.dataset.oct = l;
       });
     },
     setPlayhead(i) {

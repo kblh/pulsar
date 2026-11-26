@@ -14,7 +14,7 @@ export const MAX_MODULES = 64;
 export const MAX_EFFECTS = 32;
 const MAX_PATTERN = 64;
 export const DEFAULT_SEND_LEVEL = 0.3;
-const NUMBER_KEYS = { melodic: ['bpm', 'swing', 'randomize', 'rhythmMod', 'randOctaves'], rhythmic: ['bpm', 'swing', 'rhythmMod'], drone: ['rate', 'maxExtra', 'fade'], synth: ['glide'] };
+const NUMBER_KEYS = { melodic: ['bpm', 'swing', 'randomize', 'rhythmMod', 'randOctaves', 'density'], rhythmic: ['bpm', 'swing', 'rhythmMod'], drone: ['rate', 'maxExtra', 'fade'], synth: ['glide'] };
 
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);

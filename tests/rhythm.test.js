@@ -110,3 +110,15 @@ test('isOnlyHit tells the one hit a melodic rhythm may not lose', () => {
   assert.equal(isOnlyHit(parsePattern('x...x...'), 0), false);
   assert.equal(isOnlyHit(parsePattern('................', { allowEmpty: true }), 0), false);
 });
+
+test('density pulls the hit count to about its share of the steps and only oscillates around it', async () => {
+  const { mutateRhythm } = await import('../js/rhythm.js');
+  const count = (p) => p.filter(Boolean).length;
+  for (const [density, target] of [[2, 2], [5, 6], [10, 12]]) {
+    let r = { current: Array(16).fill(false).map((_, i) => i % 8 === 0), base: Array(16).fill(false).map((_, i) => i % 8 === 0) };
+    for (let k = 0; k < 60; k++) {
+      r = mutateRhythm(r, { level: 5, mode: 'walk', density }, Math.random);
+      if (k > 30) assert.ok(Math.abs(count(r.current) - target) <= 1, `density ${density}: ${count(r.current)}`);
+    }
+  }
+});

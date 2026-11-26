@@ -51,6 +51,7 @@ const LIMITS = {
   randomize: [0, 10, false],
   rhythmMod: [0, 10, false],
   randOctaves: [0, RAND_OCTAVES_MAX, false],
+  density: [1, 10, false],
   octave: [-2, 2, false],
   glide: [0, 0.15, true],
 };
@@ -202,6 +203,7 @@ export function createMelodicModule(overrides = {}) {
     swing: 0,
     randomize: 5, // how much the notes change (0 = not at all)
     rhythmMod: 5, // how much the rhythm changes (0 = not at all)
+    density: 4, // about how many steps sound after the rhythm has changed (it only oscillates around it)
     randOctaves: 0, // how many octaves above the base one the notes may climb to
     evolution: 'drift',
     ...overrides,
@@ -244,7 +246,7 @@ export function createMelodicModule(overrides = {}) {
       }, Math.random);
     }
     if (p.rhythmMod > 0 && m.bars % mutationEvery(p.rhythmMod) === 0) {
-      m.state.rhythm = mutateRhythm(m.state.rhythm, { level: p.rhythmMod, mode: p.evolution }, Math.random);
+      m.state.rhythm = mutateRhythm(m.state.rhythm, { level: p.rhythmMod, mode: p.evolution, density: p.density }, Math.random);
     }
   };
   return m;
