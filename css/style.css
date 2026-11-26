@@ -55,7 +55,7 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
   grid-template-columns: repeat(auto-fill, minmax(max(min(100%, 300px), calc((100% - 24px) / 3)), 1fr)); }
 /* synths: a landscape tile (half the width on a phone); effects: a portrait tile like a guitar pedal (a third of the width on a phone) */
 .cards-synth { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 260px)); }
-.cards-fx { grid-template-columns: repeat(auto-fill, minmax(min(100%, 110px), 150px)); }
+.cards-fx { grid-template-columns: repeat(auto-fill, minmax(min(100%, 90px), 100px)); }
 @media (max-width: 480px) {
   .cards-synth { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cards-fx { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
@@ -72,15 +72,21 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 .card.synth:not(.open) .card-head > *, .card.effect:not(.open) .card-head > * { flex: none; max-width: none; }
 .card.synth:not(.open) .card-title, .card.effect:not(.open) .card-title { white-space: normal; overflow-wrap: anywhere; }
 .card.synth:not(.open) .card-head .card-volume { width: 100%; }
-.card.effect:not(.open) .card-title { text-align: center; }
+.card.effect:not(.open) .card-title { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.card.effect:not(.open) .card-title { letter-spacing: 0; font-size: 12px; }
+.card.effect:not(.open) .card-name { text-overflow: clip; }
+.card.effect:not(.open) .card-icon { margin: 0; }
+.card.effect:not(.open) .card-icon .icon { width: 30px; height: 30px; }
+.card.effect:not(.open) .card-name { text-align: center; }
+/* the synth tile has two rows: the name with the switch at its end, then the volume */
 .card.synth .card-title { display: flex; align-items: center; gap: 4px; }
-.card.synth .card-title > .check { margin-left: auto; }
-.card.effect:not(.open) .card-head > .check { order: 2; align-self: center; margin-top: auto; }
+.card.synth .card-title > .switch { margin-left: auto; }
+.card.effect:not(.open) .card-head > .switch { order: 2; align-self: center; margin-top: auto; }
 
 /* a stopped module or a bypassed effect is plainly off: dashed grey frame, dim text and a muted play button; a running one keeps the accent */
 .card.stopped:not(.open) { border-style: dashed; border-color: var(--dim); background: var(--panel); }
 .card.stopped:not(.open)::before, .card.stopped:not(.open)::after { display: none; }
-.card.stopped:not(.open) .card-title > :not(.check), .card.stopped:not(.open) .card-volume { opacity: 0.45; }
+.card.stopped:not(.open) .card-title > :not(.switch), .card.stopped:not(.open) .card-volume { opacity: 0.45; }
 .card.stopped:not(.open) .card-title { color: var(--dim); }
 .card.module:not(.stopped):not(.open), .card.effect:not(.stopped):not(.open) { border-color: var(--accent); }
 
@@ -156,13 +162,14 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 .pedal-foot { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 4px; }
 .pedal-led { width: 12px; height: 12px; border-radius: 50%; background: #ff3b30; box-shadow: 0 0 10px 2px rgba(255, 59, 48, 0.8), inset 0 1px 2px rgba(255, 255, 255, 0.6); }
 .pedal.bypassed .pedal-led { background: #4a1512; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6); }
-.footswitch {
-  width: 64px; height: 64px; border: 2px solid #222; border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #f4f4f4, #9a9a9a 55%, #4d4d4d);
-  box-shadow: 0 4px 0 #222, 0 6px 10px rgba(0, 0, 0, 0.6);
-}
-.footswitch:active { transform: translateY(3px); box-shadow: 0 1px 0 #222, 0 2px 4px rgba(0, 0, 0, 0.6); }
-.footswitch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* an on/off switch: a circle, filled when on, empty when off (like the footswitch of a pedal); the button keeps a 44px touch target */
+.switch { display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: 44px; min-height: 44px; padding: 0; background: none; border: 0; cursor: pointer; --dot: 22px; }
+.switch::before { content: ''; box-sizing: border-box; width: var(--dot); height: var(--dot); border-radius: 50%; border: 2px solid var(--dim); background: transparent; transition: background 0.12s, border-color 0.12s, box-shadow 0.12s; }
+.switch[aria-checked=true]::before { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 8px var(--glow); }
+.switch-large { min-width: 72px; min-height: 72px; --dot: 56px; }
+.switch-large::before { border-width: 3px; }
+.switch:active::before { transform: scale(0.94); }
+.switch:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .pedal.bypassed .knob-arc { opacity: 0.35; }
 .pedal.bypassed .pedal-name { opacity: 0.6; }
 /* a knob group: any number of knobs side by side, wrapping on a narrow screen */

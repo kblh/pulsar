@@ -31,3 +31,14 @@ test('only one synth is active: a new one waits, starting one stops the other', 
   engine.setRunning(a, true);
   assert.deepEqual(synths(engine).map((m) => m.running), [true, false]);
 });
+
+test('stop all and play all leave the active synth playable', () => {
+  const engine = createEngine();
+  const s = createSynthModule();
+  engine.addModule(s);
+  engine.stopAll();
+  assert.equal(s.running, true);
+  assert.equal(engine.hasModules(), false);
+  engine.playAll();
+  assert.equal(s.running, true);
+});

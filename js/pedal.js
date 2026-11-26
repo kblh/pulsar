@@ -1,6 +1,7 @@
 import { createKnob } from './knob.js';
 import { FX_FIELDS, FX_PEDALS } from './fx-fields.js';
 import { FX_DEFAULTS } from './fx.js';
+import { createSwitch } from './switch.js';
 
 function el(tag, props = {}, ...children) {
   const e = Object.assign(document.createElement(tag), props);
@@ -26,17 +27,15 @@ export function createPedal({ fx, setParam, onToggle }) {
     return knob;
   });
   const led = el('span', { className: 'pedal-led' });
-  const foot = el('button', { type: 'button', className: 'footswitch' });
-  foot.setAttribute('aria-label', 'effect on');
-  foot.addEventListener('click', () => onToggle());
+  const foot = createSwitch({ label: 'effect on', large: true, onToggle: () => onToggle() });
   const node = el('div', { className: `fx-controls pedal pedal-${fx.type}` },
     el('div', { className: 'knobs' }, ...knobs.map((k) => k.node)),
     el('div', { className: 'pedal-plate' }, el('span', { className: 'pedal-name', textContent: look.title })),
-    el('div', { className: 'pedal-foot' }, led, foot));
+    el('div', { className: 'pedal-foot' }, led, foot.node));
 
   const setEnabled = (on) => {
     node.classList.toggle('bypassed', !on);
-    foot.setAttribute('aria-pressed', String(on));
+    foot.set(on);
   };
   setEnabled(fx.enabled);
   return { node, setEnabled };

@@ -1,4 +1,4 @@
-const CACHE = 'pulsar-v66';
+const CACHE = 'pulsar-v70';
 const FILES = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
@@ -8,7 +8,7 @@ const FILES = [
   'js/options.js', 'js/scene.js', 'js/scene-store.js', 'js/scenes-ui.js', 'js/scene-file.js', 'js/card.js', 'js/detail.js', 'js/hud.js', 'js/controls.js', 'js/envelope.js',
   'js/fx-fields.js', 'js/crush.js', 'js/worklet.js', 'js/bitcrusher.worklet.js',
   'js/sequence.js', 'js/sequence-ui.js', 'js/module-file.js',
-  'js/background.js', 'js/knob.js', 'js/pedal.js', 'js/step-grid.js', 'js/keyboard.js', 'js/circle.js', 'js/rhythm-circle.js', 'js/rhythm-store.js',
+  'js/background.js', 'js/knob.js', 'js/pedal.js', 'js/switch.js', 'js/step-grid.js', 'js/keyboard.js', 'js/circle.js', 'js/rhythm-circle.js', 'js/rhythm-store.js',
   'js/play-pads.js', 'js/icons.js', 'js/menu.js', 'js/keys.js', 'js/theme.js',
 ];
 

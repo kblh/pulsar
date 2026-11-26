@@ -8,6 +8,7 @@ import { createKeyboard } from './keyboard.js';
 import { createCircle } from './circle.js';
 import { WAVES, ROOTS } from './options.js';
 import { cleanName, NAME_MAX, serializeModule, addModuleFromData, MAX_MODULES, MAX_EFFECTS } from './scene.js';
+import { createSwitch } from './switch.js';
 import { mountScenes, defaultDownload } from './scenes-ui.js';
 import { addMenuItems, menuItem, createMenu, createStatus } from './menu.js';
 import { shouldHandleSpace } from './keys.js';
@@ -631,9 +632,7 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
   }
 
   function addFxPanel(fx) {
-    const bypass = el('input', { type: 'checkbox', checked: fx.enabled, title: 'on / bypass' });
-    bypass.setAttribute('aria-label', 'effect on');
-    bypass.onchange = () => engine.setFxEnabled(fx, bypass.checked);
+    const bypass = createSwitch({ label: 'effect on', on: fx.enabled, onToggle: () => { engine.setFxEnabled(fx, !fx.enabled); bypass.set(fx.enabled); } });
     const remove = iconButton('trash', { label: 'remove effect', onClick: () => removeFxPanel(fx.id) });
     const cloneBtn = iconButton('clone', {
       label: 'clone effect',
@@ -655,16 +654,17 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
       fx,
       setParam: (key, v) => engine.setFxParam(fx, key, v),
       onToggle: () => {
-        bypass.checked = !bypass.checked;
-        bypass.onchange();
+        engine.setFxEnabled(fx, !fx.enabled);
+        bypass.set(fx.enabled);
       },
     });
     const controls = pedal.node;
     const card = createCard({
       kind: 'effect',
-      title: `${fx.id} ${fx.name}`,
+      title: fx.name,
+      iconName: 'fx',
       nameEditor: el('span', {}, `${fx.id} `, nameEditor(fx)),
-      lead: [el('label', { className: 'check' }, bypass)],
+      lead: [bypass.node],
       actions: [cloneBtn, remove],
       body: [controls],
       detail,
@@ -676,14 +676,7 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
   function addPanel(m) {
     const isSynth = m.type === 'synth'; // played by hand: no start / stop
     // A synth is switched on or off like an effect (only one is on at a time); the other modules start and stop.
-    const synthOn = isSynth ? el('input', { type: 'checkbox', checked: m.running, title: 'on / off' }) : null;
-    if (synthOn) {
-      synthOn.setAttribute('aria-label', 'synth on');
-      synthOn.onchange = () => {
-        engine.setRunning(m, synthOn.checked);
-        synthOn.checked = m.running;
-      };
-    }
+    const synthOn = isSynth ? createSwitch({ label: 'synth on', on: m.running, onToggle: () => { engine.setRunning(m, !m.running); synthOn.set(m.running); } }) : null;
     const toggle = isSynth ? null : iconButton('play', { label: 'start', className: 'play', onClick: () => engine.toggle(m) });
     const remove = iconButton('trash', { label: 'remove module', onClick: () => removeModulePanel(m.id) });
     const cloneBtn = iconButton('clone', {
@@ -741,7 +734,7 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
       title: `${m.name}`,
       nameEditor: nameEditor(m),
       lead: toggle ? [toggle] : [],
-      trail: synthOn ? [el('label', { className: 'check' }, synthOn)] : [],
+      trail: synthOn ? [synthOn.node] : [],
       quick: [el('span', { className: 'card-volume' }, volume.node, panKnob(engine, m))],
       actions: [cloneBtn, exportBtn, remove],
       body: [el('div', { className: 'groups' }, ...controls, ...(rows.length ? [group('pattern view', grid)] : []))],
@@ -970,8 +963,8 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
       for (const fills of sendFills.values()) fills.forEach((f) => f());
     }
     for (const { card, fx, bypass, pedal } of fxCards.values()) {
-      card.setTitle(`${fx.id} ${fx.name}`);
-      bypass.checked = fx.enabled;
+      card.setTitle(fx.name);
+      bypass.set(fx.enabled);
       card.node.classList.toggle('stopped', !fx.enabled);
       pedal.setEnabled(fx.enabled);
     }
@@ -979,7 +972,7 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
       card.setTitle(`${module.name}`);
       const state = module.running ? 'running' : 'stopped';
       if (toggle || synthOn) card.node.classList.toggle('stopped', !module.running);
-      if (synthOn) synthOn.checked = module.running;
+      if (synthOn) synthOn.set(module.running);
       if (toggle && toggle.dataset.state !== state) {
         toggle.dataset.state = state;
         setIcon(toggle, module.running ? 'stop' : 'play', module.running ? 'stop' : 'start');

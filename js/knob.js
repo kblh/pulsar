@@ -80,7 +80,7 @@ export function createKnob({ min, max, step, value, scale = 'linear', format, on
   face.setAttribute('aria-label', ariaLabel ?? label ?? 'value');
   const labelEl = label ? html('span', { className: 'knob-label', textContent: label }) : null;
   const valueEl = format ? html('span', { className: 'knob-value' }) : null;
-  const node = html('div', { className: 'knob-wrap' }, ...(labelEl ? [labelEl] : []), face, ...(valueEl ? [valueEl] : []));
+  const node = html('div', { className: 'knob-wrap' }, ...(valueEl ? [valueEl] : []), face, ...(labelEl ? [labelEl] : [])); // value above, name below: a thumb on the knob does not cover the value
 
   function render() {
     const f = toFraction(cur, opts);

@@ -93,7 +93,7 @@ export function createEngine() {
     isStopped: () => transport.isStopped(),
     stoppedByTransport: (m) => transport.stoppedByUs(m.id),
     anyRunning: () => transport.anyRunning(),
-    hasModules: () => modules.length > 0,
+    hasModules: () => modules.some((m) => m.type !== 'synth'), // what [play all] / [stop all] act on
     /** Hand-made start/stop from the UI. */
     toggle(m) {
       if (m.running) m.stop(); else m.start();
@@ -119,7 +119,7 @@ export function createEngine() {
       routing.attach(m, mix);
       m.attach?.(ctx, m.out); // a module played by hand (the synth) schedules nothing itself
       modules.push(m);
-      transport.register(m);
+      if (m.type !== 'synth') transport.register(m); // the synth is an instrument: [stop all] leaves it playable
       syncClock();
     },
     setVolume(m, v) {
