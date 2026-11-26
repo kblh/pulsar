@@ -87,11 +87,11 @@ test('padRole marks the root and the fifth of the scale in every octave', async 
 });
 
 test('with portamento a slide from pad to pad glides the held note instead of playing a new one', () => {
-  const m = createSynthModule({ glide: 0.2 });
-  assert.equal(m.params.glide, 0.2);
+  const m = createSynthModule({ glide: 0.1 });
+  assert.equal(m.params.glide, 0.1);
   m.setParam('glide', 5);
-  assert.equal(m.params.glide, 1);
-  m.setParam('glide', 0.2);
+  assert.equal(m.params.glide, 0.15);
+  m.setParam('glide', 0.1);
   const log = [];
   const ctx = {
     currentTime: 0,
@@ -109,7 +109,7 @@ test('with portamento a slide from pad to pad glides the held note instead of pl
   assert.equal(log.filter((r) => r[0] === 'start').length, started); // no new voice
   assert.ok(log.some((r) => r[0] === 'ramp'));
   assert.deepEqual([...m.state.held.keys()], [2]);
-  assert.equal(cleanModule(serializeModule(m)).params.glide, 0.2);
+  assert.equal(cleanModule(serializeModule(m)).params.glide, 0.1);
   m.setParam('glide', 0);
   m.slide(2, 3); // without portamento it is a new note
   assert.ok(log.filter((r) => r[0] === 'start').length > started);

@@ -52,6 +52,30 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 .section-title::after { content: ''; flex: 1; border-top: 1px dashed var(--line); }
 .cards { display: grid; gap: 12px; align-items: start; /* at most 3 columns, each at least 300px, else fewer */
   grid-template-columns: repeat(auto-fill, minmax(max(min(100%, 300px), calc((100% - 24px) / 3)), 1fr)); }
+/* synths: a landscape tile (half the width on a phone); effects: a portrait tile like a guitar pedal (a third of the width on a phone) */
+.cards-synth { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 260px)); }
+.cards-fx { grid-template-columns: repeat(auto-fill, minmax(min(100%, 110px), 150px)); }
+@media (max-width: 480px) {
+  .cards-synth { grid-template-columns: repeat(2, 1fr); }
+  .cards-fx { grid-template-columns: repeat(3, 1fr); }
+}
+.card.synth:not(.open), .card.effect:not(.open) { display: flex; flex-direction: column; }
+.card.effect:not(.open) { aspect-ratio: 5 / 8; }
+.card.synth:not(.open) .card-head, .card.effect:not(.open) .card-head {
+  flex: 1; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 8px; padding: 10px 0;
+}
+.card.synth:not(.open) .card-head > *, .card.effect:not(.open) .card-head > * { flex: none; max-width: none; }
+.card.synth:not(.open) .card-title, .card.effect:not(.open) .card-title { white-space: normal; overflow-wrap: anywhere; }
+.card.synth:not(.open) .card-head .card-volume { width: 100%; }
+.card.effect:not(.open) .card-title { text-align: center; }
+.card.effect:not(.open) .card-head > .check { order: 2; align-self: center; margin-top: auto; }
+
+/* a stopped module or a bypassed effect is plainly off: dashed grey frame, dim text and a muted play button; a running one keeps the accent */
+.card.stopped:not(.open) { border-style: dashed; border-color: var(--dim); background: var(--panel); }
+.card.stopped:not(.open)::before, .card.stopped:not(.open)::after { display: none; }
+.card.stopped:not(.open) .card-title, .card.stopped:not(.open) .card-volume { opacity: 0.45; }
+.card.stopped:not(.open) .card-title { color: var(--dim); }
+.card.module:not(.stopped):not(.open), .card.effect:not(.stopped):not(.open) { border-color: var(--accent); }
 
 /* card: a small HUD panel, or the full-screen detail */
 .card {
@@ -70,6 +94,8 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 }
 .card-head .card-volume { display: flex; align-items: center; gap: 4px; flex: 1 1 130px; max-width: 50%; min-width: 0; }
 .card-volume .hud-slider { flex: 1 1 0; }
+.card-icon { display: inline-flex; vertical-align: middle; margin-right: 8px; }
+.card-icon .icon { width: 18px; height: 18px; }
 .card-name { color: inherit; letter-spacing: inherit; text-align: left; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .card-body { padding-bottom: 12px; }

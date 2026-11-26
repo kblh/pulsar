@@ -384,7 +384,7 @@ function synthControls(m, live) {
       pads.node,
       Object.assign(knobs(
         paramKnob('octave', m, 'octave', { min: -2, max: 2, step: 1, format: (v) => (v > 0 ? `+${v}` : String(v)), defaultValue: 0 }),
-        paramKnob('portamento', m, 'glide', { min: 0, max: 1, step: 0.01, format: (v) => (v === 0 ? 'off' : `${Math.round(v * 1000)} ms`), defaultValue: 0 }),
+        paramKnob('portamento', m, 'glide', { min: 0, max: 0.15, step: 0.005, format: (v) => (v === 0 ? 'off' : `${Math.round(v * 1000)} ms`), defaultValue: 0 }),
       ), { className: 'knobs play-octave' })),
     group('oscillators', ...[0, 1, 2].map(oscRow)),
     group('envelope', envelope.node),
@@ -580,7 +580,7 @@ function rhythmicControls(m, live) {
   ];
 }
 
-export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addMenuEl, menuBtn, mainMenuEl, statusEl, transportEl, scenePanelEl, store, accent }) {
+export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, addBtn, addMenuEl, menuBtn, mainMenuEl, statusEl, transportEl, scenePanelEl, store, accent }) {
   const panels = new Map(); // module id -> { card, rows, module, toggle }
   const fxCards = new Map(); // effect id -> { card, fx, bypass, pedal }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -657,7 +657,8 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
   }
 
   function addPanel(m) {
-    const toggle = iconButton('play', { label: 'start', className: 'play', onClick: () => engine.toggle(m) });
+    const isSynth = m.type === 'synth'; // played by hand: no start / stop
+    const toggle = isSynth ? null : iconButton('play', { label: 'start', className: 'play', onClick: () => engine.toggle(m) });
     const remove = iconButton('trash', { label: 'remove module', onClick: () => removeModulePanel(m.id) });
     const exportBtn = iconButton('export', {
       label: 'export module',
@@ -692,16 +693,17 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
       group('sends', ...sends.map((x) => x.row)),
     ];
     const card = createCard({
-      kind: 'module',
+      kind: isSynth ? 'module synth' : 'module',
+      iconName: { melodic: 'note', rhythmic: 'drum', drone: 'wave', synth: 'pads' }[m.type],
       title: `${m.name}`,
       nameEditor: nameEditor(m),
-      lead: [toggle],
+      lead: toggle ? [toggle] : [],
       quick: [el('span', { className: 'card-volume' }, volume.node, panKnob(engine, m))],
       actions: [exportBtn, remove],
       body: [el('div', { className: 'groups' }, ...controls, ...(rows.length ? [group('pattern view', grid)] : []))],
       detail,
     });
-    modulesEl.append(card.node);
+    (isSynth && synthsEl ? synthsEl : modulesEl).append(card.node);
     panels.set(m.id, { card, rows: [...rows, ...live], module: m, toggle });
   }
 
@@ -926,12 +928,14 @@ export function mountUi({ engine, effectsEl, modulesEl, sequenceEl, addBtn, addM
     for (const { card, fx, bypass, pedal } of fxCards.values()) {
       card.setTitle(`${fx.id} ${fx.name}`);
       bypass.checked = fx.enabled;
+      card.node.classList.toggle('stopped', !fx.enabled);
       pedal.setEnabled(fx.enabled);
     }
     for (const { card, rows, module, toggle } of panels.values()) {
       card.setTitle(`${module.name}`);
       const state = module.running ? 'running' : 'stopped';
-      if (toggle.dataset.state !== state) {
+      if (toggle) card.node.classList.toggle('stopped', !module.running);
+      if (toggle && toggle.dataset.state !== state) {
         toggle.dataset.state = state;
         setIcon(toggle, module.running ? 'stop' : 'play', module.running ? 'stop' : 'start');
       }

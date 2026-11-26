@@ -32,6 +32,7 @@ mountUi({
   engine,
   effectsEl: document.getElementById('effects'),
   modulesEl: document.getElementById('modules'),
+  synthsEl: document.getElementById('synths'),
   sequenceEl: document.getElementById('sequence'),
   addBtn: document.getElementById('add-btn'),
   addMenuEl: document.getElementById('add-menu'),

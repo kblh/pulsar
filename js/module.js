@@ -51,7 +51,7 @@ const LIMITS = {
   randomize: [1, 10, false],
   rhythmMod: [1, 10, false],
   octave: [-2, 2, false],
-  glide: [0, 1, true],
+  glide: [0, 0.15, true],
 };
 
 
@@ -296,7 +296,7 @@ export function createSynthModule(overrides = {}) {
     oscs: cleanOscs(overrides.oscs),
   };
   params.octave = clamp(Math.round(Number(params.octave)) || 0, -2, 2);
-  params.glide = clamp(Number(params.glide) || 0, 0, 1);
+  params.glide = clamp(Number(params.glide) || 0, 0, 0.15);
   const voices = new Map(); // pad -> the sounding voice
   const m = makeModule('synth', params, { held: voices }, buildPitchPool(params.pitchConfig), () => {});
   let audio = null;

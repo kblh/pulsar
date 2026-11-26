@@ -1,4 +1,4 @@
-import { iconButton } from './icons.js';
+import { icon, iconButton } from './icons.js';
 
 function el(tag, props = {}, ...children) {
   const e = Object.assign(document.createElement(tag), props);
@@ -11,14 +11,14 @@ function el(tag, props = {}, ...children) {
  * The header is always visible; `lead` comes before the title, `quick` after it. The rename field, `actions`
  * and the close button show only in the detail, the `body` too.
  */
-export function createCard({ kind, title, nameEditor, lead = [], quick = [], actions = [], body = [], detail }) {
+export function createCard({ kind, title, nameEditor, lead = [], quick = [], actions = [], body = [], detail, iconName }) {
   // A real button, so the keyboard can open the card; clicking elsewhere on the card works too.
   const name = el('button', { className: 'card-name', type: 'button', textContent: title });
   name.setAttribute('aria-expanded', 'false');
   const closeBtn = iconButton('close', { label: 'close', className: 'card-close' });
   const head = el('div', { className: 'card-head' },
     ...lead,
-    el('span', { className: 'card-title' }, name, el('span', { className: 'card-name-edit' }, nameEditor)),
+    el('span', { className: 'card-title' }, ...(iconName ? [el('span', { className: 'card-icon' }, icon(iconName))] : []), name, el('span', { className: 'card-name-edit' }, nameEditor)),
     ...quick,
     el('span', { className: 'card-actions' }, ...actions, closeBtn));
   const node = el('section', { className: `card ${kind}` }, head, el('div', { className: 'card-body' }, ...body));
