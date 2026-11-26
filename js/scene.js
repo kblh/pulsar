@@ -5,7 +5,7 @@ import { SCALES } from './scales.js';
 import { DEFAULT_ENV } from './synth.js';
 import { WAVES, ROOTS } from './options.js';
 import { createMelodicModule, createRhythmicModule, createDroneModule, createSynthModule, cleanOscs, cleanSounds, cleanRotation } from './module.js';
-import { cleanDuration, MAX_PARTS } from './sequence.js';
+import { cleanDuration, cleanUnit, MAX_PARTS } from './sequence.js';
 import { cleanTempo, DEFAULT_TEMPO } from './timing.js';
 
 export const NAME_MAX = 24;
@@ -58,6 +58,7 @@ export function serializeScene({ modules, effects, stoppedByTransport = () => fa
         sequence: {
           name: seq.name,
           loop: seq.loop,
+          unit: seq.unit,
           parts: seq.parts.map((p) => ({ name: p.name, duration: p.duration, modules: p.modules.filter((id) => position.has(id)).map((id) => position.get(id)) })),
         },
       }
@@ -72,6 +73,7 @@ function cleanSequence(raw, remap, problems) {
     return null;
   }
   if (raw.parts.length > MAX_PARTS) problems.push(`sequence: only the first ${MAX_PARTS} parts are used`);
+  const unit = cleanUnit(raw.unit);
   const parts = raw.parts.slice(0, MAX_PARTS).map((p, i) => {
     const o = isObj(p) ? p : {};
     const members = [];
@@ -80,9 +82,9 @@ function cleanSequence(raw, remap, problems) {
         if (Number.isInteger(x) && remap.has(x) && !members.includes(remap.get(x))) members.push(remap.get(x));
       }
     }
-    return { name: cleanName(o.name, `part ${i + 1}`), duration: cleanDuration(o.duration), modules: members };
+    return { name: cleanName(o.name, `part ${i + 1}`), duration: cleanDuration(o.duration, unit), modules: members };
   });
-  return { name: cleanName(raw.name, 'sequence'), loop: raw.loop === true, parts };
+  return { name: cleanName(raw.name, 'sequence'), loop: raw.loop === true, unit, parts };
 }
 
 function cleanPitchConfig(c) {
@@ -305,10 +307,11 @@ export function applyScene(engine, scene, ui) {
 
   if (scene.sequence) {
     try {
-      const { name, loop, parts } = scene.sequence;
+      const { name, loop, unit, parts } = scene.sequence;
       const sequence = engine.addSequence({
         name,
         loop,
+        unit,
         parts: parts.map((p) => ({ name: p.name, duration: p.duration, modules: p.modules.map((i) => built[i]).filter((id) => id !== undefined) })),
       });
       ui.addSequencePanel?.(sequence);

@@ -265,7 +265,7 @@ test('serializeScene writes the sequence with module positions instead of ids an
   const { modules, effects } = sample();
   const seq = createSequence({ name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [modules[2].id, modules[0].id] }, { duration: 40, modules: [modules[1].id] }] }, hostOf(modules));
   const scene = serializeScene({ modules, effects, sequence: seq });
-  assert.deepEqual(scene.sequence, { name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [2, 0] }, { name: 'part 2', duration: 40, modules: [1] }] });
+  assert.deepEqual(scene.sequence, { name: 'song', loop: true, unit: 'sec', parts: [{ name: 'a', duration: 12, modules: [2, 0] }, { name: 'part 2', duration: 40, modules: [1] }] });
   assert.deepEqual(scene, JSON.parse(JSON.stringify(scene)));
   assert.ok(!('sequence' in serializeScene({ modules, effects })));
   seq.parts[0].modules.push(99999); // a module that is not in the scene is left out
@@ -329,7 +329,7 @@ test('the sequence round-trips through serialisation and validation', () => {
   const { modules, effects } = sample();
   const seq = createSequence({ name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [modules[0].id, modules[2].id] }, { name: 'b', duration: 40, modules: [modules[1].id] }] }, hostOf(modules));
   const back = validateScene(JSON.parse(JSON.stringify(serializeScene({ modules, effects, sequence: seq })))).scene;
-  assert.deepEqual(back.sequence, { name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [0, 2] }, { name: 'b', duration: 40, modules: [1] }] });
+  assert.deepEqual(back.sequence, { name: 'song', loop: true, unit: 'sec', parts: [{ name: 'a', duration: 12, modules: [0, 2] }, { name: 'b', duration: 40, modules: [1] }] });
 });
 
 test('the global tempo is saved only when given', () => {

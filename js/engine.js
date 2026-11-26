@@ -4,7 +4,7 @@ import { connectMix, clampVolume, clampPan } from './mix.js';
 import { createRouting } from './sends.js';
 import { loadWorklet, hasWorklet } from './worklet.js';
 import { createSequence } from './sequence.js';
-import { createTempo } from './timing.js';
+import { createTempo, STEPS_PER_BAR, stepDuration } from './timing.js';
 
 export function createEngine() {
   const ctx = new AudioContext();
@@ -49,6 +49,7 @@ export function createEngine() {
     transport.manual(m.id);
   };
   const host = {
+    barSeconds: () => STEPS_PER_BAR * stepDuration(tempo.state.bpm), // a bar of the global tempo
     ids: () => modules.map((m) => m.id),
     isRunning: (id) => modules.find((m) => m.id === id)?.running === true,
     setRunning: (id, on) => {

@@ -343,7 +343,7 @@ test('toData is plain data and round-trips', () => {
   const host = fakeHost();
   const s = createSequence({ name: 'song', loop: true, parts: parts2() }, host);
   const data = s.toData();
-  assert.deepEqual(data, { name: 'song', loop: true, parts: parts2() });
+  assert.deepEqual(data, { name: 'song', loop: true, unit: 'sec', parts: parts2() });
   data.parts[0].modules.push(99);
   assert.deepEqual(s.parts[0].modules, [1, 2], 'a copy, not a view');
   const again = createSequence(JSON.parse(JSON.stringify(s.toData())), host);
@@ -384,4 +384,46 @@ test('apply enters the current part again while running, settle only when the pa
   host.calls.length = 0;
   s.settle();
   assert.deepEqual(on(host), [1, 2], 'a part that was just entered: settle re-asserts it (part 1 has modules 1 and 2)');
+});
+
+test('lengths in bars follow the host tempo (a bar is barSeconds long)', () => {
+  let bar = 2;
+  const host = { ...fakeHost(), barSeconds: () => bar };
+  const seq = createSequence({ unit: 'bars', parts: [{ name: 'a', duration: 2, modules: [] }, { name: 'b', duration: 1, modules: [] }] }, host);
+  assert.equal(seq.unit, 'bars');
+  assert.equal(seq.partSeconds(0), 4);
+  seq.start();
+  seq.tick(0);
+  seq.tick(3.9);
+  assert.equal(seq.index, 0);
+  seq.tick(4.1);
+  assert.equal(seq.index, 1);
+  bar = 4; // a slower global tempo stretches the part that is playing
+  assert.equal(seq.partSeconds(1), 4);
+  assert.ok(seq.remaining() > 3);
+});
+
+test('switching the unit keeps the parts about as long as they were', () => {
+  const host = { ...fakeHost(), barSeconds: () => 2 };
+  const seq = createSequence({ parts: [{ name: 'a', duration: 30, modules: [] }, { name: 'b', duration: 1, modules: [] }] }, host);
+  assert.equal(seq.unit, 'sec');
+  seq.setUnit('bars');
+  assert.deepEqual(seq.parts.map((p) => p.duration), [15, 1]);
+  seq.setPart(0, { duration: 9999 });
+  assert.equal(seq.parts[0].duration, 256);
+  seq.setUnit('sec');
+  assert.equal(seq.parts[1].duration, 2);
+  assert.equal(seq.parts[0].duration, 512);
+  assert.equal(seq.toData().unit, 'sec');
+  seq.setUnit('nope');
+  assert.equal(seq.unit, 'sec');
+});
+
+test('cleanDuration knows both units; a host without barSeconds counts a bar as 2 s', () => {
+  assert.equal(cleanDuration(1000, 'bars'), 256);
+  assert.equal(cleanDuration(0, 'bars'), 1);
+  assert.equal(cleanDuration('x', 'bars'), 8);
+  assert.equal(cleanDuration('x'), DEFAULT_DURATION);
+  const seq = createSequence({ unit: 'bars', parts: [{ duration: 3 }] }, fakeHost());
+  assert.equal(seq.partSeconds(0), 6);
 });

@@ -207,7 +207,7 @@ test('applyScene builds the sequence after the modules, with the ids of the modu
   const { skipped } = applyScene(e2, withSeq, ui2);
   assert.deepEqual(skipped, []);
   const ids = e2.modules.map((m) => m.id);
-  assert.deepEqual(e2.sequenceData, { name: 'song', loop: true, parts: [{ name: 'a', duration: 12, modules: [ids[0], ids[2]] }, { name: 'b', duration: 5, modules: [ids[1]] }] });
+  assert.deepEqual(e2.sequenceData, { name: 'song', loop: true, unit: 'sec', parts: [{ name: 'a', duration: 12, modules: [ids[0], ids[2]] }, { name: 'b', duration: 5, modules: [ids[1]] }] });
   assert.ok(e2.log.indexOf('addSequence') > e2.log.lastIndexOf('addModule:drone'), 'after the last module');
   assert.equal(e2.log.indexOf('clear'), 0, 'the old setup is cleared first');
   assert.equal(ui2.sequencePanels.length, 1);

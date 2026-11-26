@@ -1,7 +1,7 @@
 import { createCard } from './card.js';
-import { createSlider } from './controls.js';
+import { createSlider, createSegmented } from './controls.js';
 import { iconButton, setIcon } from './icons.js';
-import { MAX_PARTS, MIN_DURATION, MAX_DURATION } from './sequence.js';
+import { MAX_PARTS, MIN_DURATION, MAX_DURATION, MIN_BARS, MAX_BARS } from './sequence.js';
 
 function el(tag, props = {}, ...children) {
   const e = Object.assign(document.createElement(tag), props);
@@ -10,6 +10,7 @@ function el(tag, props = {}, ...children) {
 }
 
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const barsText = (n) => `${n} ${n === 1 ? 'bar' : 'bars'}`;
 
 /**
  * The sequence as a card at the bottom of the page: play/stop and "part N/M · m:ss" while collapsed, the parts editor in the detail.
@@ -43,6 +44,9 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
   });
   container.append(card.node);
 
+  const tempoNote = el('span', { className: 'muted seq-tempo' });
+  // A bar is four beats at the global tempo (also while it is off: the sequence still counts in it).
+  const barNote = () => `1 bar = ${Math.round((240 / engine.tempo.bpm) * 10) / 10} s at ${engine.tempo.bpm} BPM${engine.tempo.on ? '' : ' (global tempo off)'}`;
   let sig = '';
   let partEls = []; // { node, chips: [button] } per part
   const moduleSig = () => engine.modules.map((m) => m.id).join();
@@ -63,6 +67,18 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
     loopBox.onchange = () => seq.setLoop(loopBox.checked);
     const loop = el('label', { className: 'check seq-loop' }, loopBox, el('span', { textContent: 'loop' }));
     const nav = el('div', { className: 'row' }, el('label', { textContent: 'skip' }), prev, next, loop);
+    const bars = seq.unit === 'bars';
+    const unit = createSegmented({
+      options: [{ value: 'sec', label: 'sec' }, { value: 'bars', label: 'bars' }],
+      value: seq.unit,
+      ariaLabel: 'part length unit',
+      onChange: (u) => {
+        seq.setUnit(u);
+        renderBody();
+      },
+    });
+    const unitRow = el('div', { className: 'row' }, el('label', { textContent: 'length in' }), unit.node, tempoNote);
+    tempoNote.textContent = bars ? barNote() : '';
 
     const parts = seq.parts.map((part, i) => {
       const nameProxy = {
@@ -71,7 +87,8 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
         type: `part ${i + 1}`,
       };
       const length = createSlider({
-        min: MIN_DURATION, max: MAX_DURATION, step: 1, scale: 'log', format: clock, nudge: 1,
+        min: bars ? MIN_BARS : MIN_DURATION, max: bars ? MAX_BARS : MAX_DURATION, step: 1, scale: 'log',
+        format: bars ? barsText : clock, nudge: 1,
         ariaLabel: `part ${i + 1} length`, value: part.duration,
         onInput: (v) => {
           seq.setPart(i, { duration: v });
@@ -111,7 +128,7 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
       renderBody();
     }, 'wide');
     add.disabled = seq.parts.length >= MAX_PARTS;
-    body.replaceChildren(nav, ...parts, add);
+    body.replaceChildren(nav, unitRow, ...parts, add);
   }
   renderBody();
 
@@ -133,9 +150,11 @@ export function mountSequenceCard({ engine, seq, detail, container, nameEditor, 
       }
       const n = seq.parts.length;
       const part = seq.parts[seq.index];
-      const text = n ? `part ${seq.index + 1}/${n} · ${clock(seq.running ? Math.ceil(seq.remaining()) : part.duration)}` : 'no parts';
+      const text = n ? `part ${seq.index + 1}/${n} · ${clock(seq.running ? Math.ceil(seq.remaining()) : seq.partSeconds(seq.index))}` : 'no parts';
       if (status.textContent !== text) status.textContent = text;
-      bar.style.width = `${n && part ? Math.min(100, (seq.elapsed / part.duration) * 100) : 0}%`;
+      bar.style.width = `${n && part ? Math.min(100, (seq.elapsed / seq.partSeconds(seq.index)) * 100) : 0}%`;
+      const note = seq.unit === 'bars' ? barNote() : '';
+      if (tempoNote.textContent !== note) tempoNote.textContent = note;
       if (moduleSig() !== sig && !typing()) renderBody();
       partEls.forEach((p, i) => p.node.classList.toggle('current', i === seq.index));
       for (const p of partEls) {
