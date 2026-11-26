@@ -18,9 +18,17 @@ export function defaultDownload(filename, text) {
  * The save row and the scene list in the panel below the header; the hamburger menu opens them (`openSave`, `openLoad`).
  * `sceneUi` is what applyScene needs: { clear, addFxPanel, addModulePanel, addSequencePanel }. `say(text)` shows a status message.
  */
-export function mountScenes({ engine, store, sceneUi, panelEl, say, download = defaultDownload }) {
+export function mountScenes({ engine, store, sceneUi, panelEl, say, titleEl = null, download = defaultDownload }) {
   let mode = null; // 'save' | 'load' | null
   let lastName = '';
+  let currentId = null; // the saved scene shown in the header
+  const showTitle = () => {
+    if (!titleEl) return;
+    const entry = currentId === null ? null : store.list().find((e) => e.id === currentId);
+    if (!entry) currentId = null;
+    titleEl.textContent = entry ? entry.name : '';
+    titleEl.hidden = !entry;
+  };
   let pendingDelete = null;
   let deleteTimer = null;
   let renaming = null;
@@ -57,6 +65,7 @@ export function mountScenes({ engine, store, sceneUi, panelEl, say, download = d
       return;
     }
     lastName = cleanName(name, 'scene');
+    currentId = store.list().find((e) => e.name === lastName)?.id ?? null;
     say(`saved "${lastName}"`);
     mode = null;
     render();
@@ -72,6 +81,7 @@ export function mountScenes({ engine, store, sceneUi, panelEl, say, download = d
     }
     const { skipped } = applyScene(engine, scene, sceneUi);
     lastName = entry.name;
+    currentId = entry.id;
     say(skipped.length ? `loaded "${entry.name}", skipped: ${skipped.join(', ')}` : `loaded "${entry.name}"`);
     mode = null;
     render();
@@ -226,6 +236,7 @@ export function mountScenes({ engine, store, sceneUi, panelEl, say, download = d
   }
 
   function render() {
+    showTitle();
     panelEl.replaceChildren();
     if (mode === 'save') panelEl.append(saveRow());
     if (mode === 'load') {

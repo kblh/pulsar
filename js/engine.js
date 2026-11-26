@@ -101,6 +101,15 @@ export function createEngine() {
     },
     resume: () => (ctx.state === 'running' ? Promise.resolve() : ctx.resume()),
     addModule(m) {
+      if (m.type === 'synth') {
+        // Only one synth is active (the one the keyboard plays): a new one waits when another is, and starting one stops the rest.
+        if (modules.some((x) => x.type === 'synth' && x.running)) m.stop();
+        const start = m.start;
+        m.start = () => {
+          for (const x of modules) if (x !== m && x.type === 'synth' && x.running) x.stop();
+          start();
+        };
+      }
       m.out = ctx.createGain();
       m.out.gain.value = m.outLevel ?? 0.4;
       m.volume = 1;

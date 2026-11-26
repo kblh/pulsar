@@ -39,6 +39,7 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 .bar-actions { display: flex; margin-left: auto; }
 .brand { text-transform: uppercase; letter-spacing: 0.18em; }
 .prompt { color: var(--dim); }
+.scene-title { color: var(--dim); text-transform: none; letter-spacing: 0.04em; overflow-wrap: anywhere; }
 .cursor { animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
@@ -72,12 +73,14 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 .card.synth:not(.open) .card-title, .card.effect:not(.open) .card-title { white-space: normal; overflow-wrap: anywhere; }
 .card.synth:not(.open) .card-head .card-volume { width: 100%; }
 .card.effect:not(.open) .card-title { text-align: center; }
+.card.synth .card-title { display: flex; align-items: center; gap: 4px; }
+.card.synth .card-title > .check { margin-left: auto; }
 .card.effect:not(.open) .card-head > .check { order: 2; align-self: center; margin-top: auto; }
 
 /* a stopped module or a bypassed effect is plainly off: dashed grey frame, dim text and a muted play button; a running one keeps the accent */
 .card.stopped:not(.open) { border-style: dashed; border-color: var(--dim); background: var(--panel); }
 .card.stopped:not(.open)::before, .card.stopped:not(.open)::after { display: none; }
-.card.stopped:not(.open) .card-title, .card.stopped:not(.open) .card-volume { opacity: 0.45; }
+.card.stopped:not(.open) .card-title > :not(.check), .card.stopped:not(.open) .card-volume { opacity: 0.45; }
 .card.stopped:not(.open) .card-title { color: var(--dim); }
 .card.module:not(.stopped):not(.open), .card.effect:not(.stopped):not(.open) { border-color: var(--accent); }
 

@@ -340,6 +340,7 @@ function synthControls(m, live) {
     label: (i) => midiName(m.padNote(i)),
     role: (i) => m.padRole(i),
     layout: padLayout,
+    keysActive: () => m.running, // the active synth is played from the computer keyboard on the main page too
     onDown: (i) => m.noteOn(i),
     onUp: (i) => m.noteOff(i),
     onSlide: (from, to) => m.slide(from, to),
@@ -674,6 +675,15 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
 
   function addPanel(m) {
     const isSynth = m.type === 'synth'; // played by hand: no start / stop
+    // A synth is switched on or off like an effect (only one is on at a time); the other modules start and stop.
+    const synthOn = isSynth ? el('input', { type: 'checkbox', checked: m.running, title: 'on / off' }) : null;
+    if (synthOn) {
+      synthOn.setAttribute('aria-label', 'synth on');
+      synthOn.onchange = () => {
+        engine.setRunning(m, synthOn.checked);
+        synthOn.checked = m.running;
+      };
+    }
     const toggle = isSynth ? null : iconButton('play', { label: 'start', className: 'play', onClick: () => engine.toggle(m) });
     const remove = iconButton('trash', { label: 'remove module', onClick: () => removeModulePanel(m.id) });
     const cloneBtn = iconButton('clone', {
@@ -731,13 +741,14 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
       title: `${m.name}`,
       nameEditor: nameEditor(m),
       lead: toggle ? [toggle] : [],
+      trail: synthOn ? [el('label', { className: 'check' }, synthOn)] : [],
       quick: [el('span', { className: 'card-volume' }, volume.node, panKnob(engine, m))],
       actions: [cloneBtn, exportBtn, remove],
       body: [el('div', { className: 'groups' }, ...controls, ...(rows.length ? [group('pattern view', grid)] : []))],
       detail,
     });
     (isSynth && synthsEl ? synthsEl : modulesEl).append(card.node);
-    panels.set(m.id, { card, rows: [...rows, ...live], module: m, toggle });
+    panels.set(m.id, { card, rows: [...rows, ...live], module: m, toggle, synthOn });
   }
 
   async function add(factory) {
@@ -964,10 +975,11 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
       card.node.classList.toggle('stopped', !fx.enabled);
       pedal.setEnabled(fx.enabled);
     }
-    for (const { card, rows, module, toggle } of panels.values()) {
+    for (const { card, rows, module, toggle, synthOn } of panels.values()) {
       card.setTitle(`${module.name}`);
       const state = module.running ? 'running' : 'stopped';
-      if (toggle) card.node.classList.toggle('stopped', !module.running);
+      if (toggle || synthOn) card.node.classList.toggle('stopped', !module.running);
+      if (synthOn) synthOn.checked = module.running;
       if (toggle && toggle.dataset.state !== state) {
         toggle.dataset.state = state;
         setIcon(toggle, module.running ? 'stop' : 'play', module.running ? 'stop' : 'start');
@@ -979,5 +991,5 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
   }
   requestAnimationFrame(frame);
 
-  if (scenePanelEl && store) scenes = mountScenes({ engine, store, sceneUi, panelEl: scenePanelEl, say });
+  if (scenePanelEl && store) scenes = mountScenes({ engine, store, sceneUi, panelEl: scenePanelEl, say, titleEl: document.getElementById('scene-title') });
 }

@@ -8,7 +8,7 @@ const el = (tag, props = {}) => Object.assign(document.createElement(tag), props
  * the root ('root') or the fifth ('fifth') so they are tinted; `setLabels` repaints both. `setLayout('keys')` puts all 16 in one row of tall keys that touch (easy to slide across); `setLayout('kalimba')` lays the
  * first 9 pads out as the tines of a kalimba (the lowest in the middle, rising alternately to the left and the right).
  */
-export function createPlayPads({ onDown, onUp, onSlide, label = String, role = () => null, ariaLabel = 'play pads', layout = 'grid' }) {
+export function createPlayPads({ onDown, onUp, onSlide, label = String, role = () => null, ariaLabel = 'play pads', layout = 'grid', keysActive = null }) {
   const node = el('div', { className: 'pads play-pads' });
   node.setAttribute('role', 'group');
   node.setAttribute('aria-label', ariaLabel);
@@ -87,13 +87,14 @@ export function createPlayPads({ onDown, onUp, onSlide, label = String, role = (
   node.addEventListener('pointercancel', end);
   node.addEventListener('lostpointercapture', end);
 
-  // Computer keys while the pads are on screen (the open card), when no field is being typed in. By the physical key
+  // Computer keys while `keysActive()` says so (else while the pads are on screen, in the open card), when no field is being typed in. By the physical key
   // (a Czech keyboard has Y where a US one has Z), so it plays the same on every layout.
   const CODES = ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyQ', 'KeyW', 'KeyE', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4'];
-  const typing = (t) => t instanceof Element && t.closest('input, select, textarea, [contenteditable]');
+  // A checkbox, radio, button or slider input is not text: after clicking a synth's on/off box the keys must still play.
+  const typing = (t) => t instanceof Element && t.closest('input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=range]), select, textarea, [contenteditable]');
   const onKeyDown = (e) => {
     if (!node.isConnected) return void removeListeners();
-    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !node.closest('.card.open')) return;
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !(keysActive ? keysActive() : node.closest('.card.open'))) return;
     const i = CODES.indexOf(e.code);
     if (i < 0 || pads[i].hidden) return;
     e.preventDefault();
