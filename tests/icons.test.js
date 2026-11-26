@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ICON_PATHS, icon } from '../js/icons.js';
 
 const NAMES = [
-  'check', 'close', 'down', 'drum', 'export', 'fx', 'import', 'list', 'load', 'menu', 'metronome', 'mute', 'new', 'next', 'note',
+  'check', 'clone', 'close', 'down', 'drum', 'export', 'fx', 'import', 'list', 'load', 'menu', 'metronome', 'mute', 'new', 'next', 'note',
   'pads', 'play', 'plus', 'prev', 'rename', 'save', 'sound', 'stop', 'theme', 'trash', 'up', 'use', 'wave',
 ];
 

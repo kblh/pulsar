@@ -1,6 +1,7 @@
 /** Line icons on a 24 x 24 grid. Stroke only, drawn in `currentColor`, so CSS colours them. */
 export const ICON_PATHS = {
   check: 'M5 12l5 5L20 7',
+  clone: 'M9 9h11v11H9zM5 15V4h11',
   close: 'M6 6l12 12M18 6L6 18',
   down: 'M12 5v14M6 13l6 6 6-6',
   drum: 'M4 10v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6M4 10c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3zM8 3l3 4M16 3l-3 4',

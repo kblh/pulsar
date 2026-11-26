@@ -7,7 +7,7 @@ import { DRUM_SOUNDS } from './synth.js';
 import { createKeyboard } from './keyboard.js';
 import { createCircle } from './circle.js';
 import { WAVES, ROOTS } from './options.js';
-import { cleanName, NAME_MAX, serializeModule, addModuleFromData, MAX_MODULES } from './scene.js';
+import { cleanName, NAME_MAX, serializeModule, addModuleFromData, MAX_MODULES, MAX_EFFECTS } from './scene.js';
 import { mountScenes, defaultDownload } from './scenes-ui.js';
 import { addMenuItems, menuItem, createMenu, createStatus } from './menu.js';
 import { shouldHandleSpace } from './keys.js';
@@ -634,6 +634,22 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
     bypass.setAttribute('aria-label', 'effect on');
     bypass.onchange = () => engine.setFxEnabled(fx, bypass.checked);
     const remove = iconButton('trash', { label: 'remove effect', onClick: () => removeFxPanel(fx.id) });
+    const cloneBtn = iconButton('clone', {
+      label: 'clone effect',
+      onClick: async () => {
+        if (engine.effects.length >= MAX_EFFECTS) return say(`at most ${MAX_EFFECTS} effects`);
+        let copy = null;
+        try {
+          copy = engine.addEffect(fx.type, JSON.parse(JSON.stringify(fx.params)));
+          copy.name = cleanName(`${fx.name} copy`, fx.type);
+          if (fx.enabled === false) engine.setFxEnabled(copy, false);
+          addFxPanel(copy);
+        } catch {
+          if (copy) { try { engine.removeEffect(copy.id); } catch { /* already gone */ } }
+          say('could not clone the effect');
+        }
+      },
+    });
     const pedal = createPedal({
       fx,
       setParam: (key, v) => engine.setFxParam(fx, key, v),
@@ -648,7 +664,7 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
       title: `${fx.id} ${fx.name}`,
       nameEditor: el('span', {}, `${fx.id} `, nameEditor(fx)),
       lead: [el('label', { className: 'check' }, bypass)],
-      actions: [remove],
+      actions: [cloneBtn, remove],
       body: [controls],
       detail,
     });
@@ -660,6 +676,23 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
     const isSynth = m.type === 'synth'; // played by hand: no start / stop
     const toggle = isSynth ? null : iconButton('play', { label: 'start', className: 'play', onClick: () => engine.toggle(m) });
     const remove = iconButton('trash', { label: 'remove module', onClick: () => removeModulePanel(m.id) });
+    const cloneBtn = iconButton('clone', {
+      label: 'clone module',
+      onClick: () => {
+        if (engine.modules.length >= MAX_MODULES) return say(`at most ${MAX_MODULES} modules`);
+        const index = new Map(engine.effects.map((fx, i) => [fx.id, i]));
+        const data = {
+          ...serializeModule(m, engine.stoppedByTransport),
+          name: cleanName(`${m.name ?? m.type} copy`, m.type),
+          sends: (m.sends ?? []).map((s) => ({ fx: index.has(s.fx) ? index.get(s.fx) : null, level: s.level })),
+        };
+        try {
+          addPanel(addModuleFromData(engine, data, { fxs: engine.effects }));
+        } catch {
+          say('could not clone the module');
+        }
+      },
+    });
     const exportBtn = iconButton('export', {
       label: 'export module',
       onClick: () => defaultDownload(moduleFilename(m.name), moduleToFile(serializeModule(m, engine.stoppedByTransport))),
@@ -699,7 +732,7 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
       nameEditor: nameEditor(m),
       lead: toggle ? [toggle] : [],
       quick: [el('span', { className: 'card-volume' }, volume.node, panKnob(engine, m))],
-      actions: [exportBtn, remove],
+      actions: [cloneBtn, exportBtn, remove],
       body: [el('div', { className: 'groups' }, ...controls, ...(rows.length ? [group('pattern view', grid)] : []))],
       detail,
     });
