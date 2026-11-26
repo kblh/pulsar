@@ -56,10 +56,14 @@ header.bar button { min-height: 44px; min-width: 44px; color: var(--accent); }
 .cards-synth { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 260px)); }
 .cards-fx { grid-template-columns: repeat(auto-fill, minmax(min(100%, 110px), 150px)); }
 @media (max-width: 480px) {
-  .cards-synth { grid-template-columns: repeat(2, 1fr); }
-  .cards-fx { grid-template-columns: repeat(3, 1fr); }
+  .cards-synth { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cards-fx { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
+  .card:not(.open) .card-head .card-volume { flex: 0 1 36%; max-width: 36%; }
+  .card:not(.open) .card-title { flex: 1 1 0; }
+  .card.synth:not(.open) .card-head .card-volume, .card.effect:not(.open) .card-head .card-volume { max-width: none; }
+  .card.effect:not(.open) .card-title { letter-spacing: 0; font-size: 12px; }
 }
-.card.synth:not(.open), .card.effect:not(.open) { display: flex; flex-direction: column; }
+.card.synth:not(.open), .card.effect:not(.open) { display: flex; flex-direction: column; width: 100%; min-width: 0; }
 .card.effect:not(.open) { aspect-ratio: 5 / 8; }
 .card.synth:not(.open) .card-head, .card.effect:not(.open) .card-head {
   flex: 1; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 8px; padding: 10px 0;
