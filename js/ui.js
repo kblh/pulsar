@@ -853,7 +853,7 @@ export function mountUi({ engine, effectsEl, modulesEl, synthsEl, sequenceEl, ad
           const b = el('button', { type: 'button', className: 'swatch', title: a.name });
           b.dataset.id = a.id;
           b.setAttribute('aria-label', a.name);
-          b.style.background = deriveTheme(a.hue)['--accent'];
+          b.style.background = deriveTheme(a.hue, a.mono)['--accent'];
           b.onclick = () => {
             accent.set(a.id);
             paint();

@@ -6,21 +6,23 @@ export const ACCENTS = [
   { id: 'magenta', name: 'magenta', hue: 320 },
   { id: 'violet', name: 'violet', hue: 265 },
   { id: 'red', name: 'red', hue: 5 },
+  { id: 'grey', name: 'grey', hue: 0, mono: true },
 ];
 export const DEFAULT_ACCENT = 'cyan';
 export const STORAGE_KEY = 'pulsar.accent';
 
 /** Every colour variable of the stylesheet for one hue (the same saturation and lightness for each accent, so they read alike). */
-export function deriveTheme(hue) {
+export function deriveTheme(hue, mono = false) {
+  const k = mono ? 0 : 1; // a grey theme has no saturation at all
   return {
-    '--accent': `hsl(${hue}, 100%, 68%)`,
-    '--fg': `hsl(${hue}, 76%, 79%)`,
-    '--dim': `hsl(${hue}, 32%, 44%)`,
-    '--line': `hsl(${hue}, 53%, 26%)`,
-    '--glow': `hsla(${hue}, 100%, 68%, 0.35)`,
-    '--panel': `hsl(${hue}, 36%, 8%)`,
-    '--panel-hi': `hsl(${hue}, 42%, 12%)`,
-    '--bg': `hsl(${hue}, 33%, 5%)`,
+    '--accent': `hsl(${hue}, ${k * 100}%, 68%)`,
+    '--fg': `hsl(${hue}, ${k * 76}%, 79%)`,
+    '--dim': `hsl(${hue}, ${k * 32}%, 44%)`,
+    '--line': `hsl(${hue}, ${k * 53}%, 26%)`,
+    '--glow': `hsla(${hue}, ${k * 100}%, 68%, 0.35)`,
+    '--panel': `hsl(${hue}, ${k * 36}%, 8%)`,
+    '--panel-hi': `hsl(${hue}, ${k * 42}%, 12%)`,
+    '--bg': `hsl(${hue}, ${k * 33}%, 5%)`,
   };
 }
 
@@ -50,7 +52,7 @@ export function saveAccent(storage, id) {
 /** Paints the page: the variables on `root` and the browser's theme colour in `themeMeta`. */
 export function applyTheme(root, themeMeta, id) {
   const accent = ACCENTS.find((a) => a.id === id) ?? ACCENTS.find((a) => a.id === DEFAULT_ACCENT);
-  const vars = deriveTheme(accent.hue);
+  const vars = deriveTheme(accent.hue, accent.mono);
   for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
   themeMeta?.setAttribute('content', vars['--bg']);
 }

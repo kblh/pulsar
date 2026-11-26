@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ACCENTS, DEFAULT_ACCENT, STORAGE_KEY, deriveTheme, loadAccent, saveAccent } from '../js/theme.js';
 
-test('the six accents are distinct and the default exists', () => {
-  assert.deepEqual(ACCENTS.map((a) => a.id), ['cyan', 'green', 'amber', 'magenta', 'violet', 'red']);
-  assert.deepEqual(ACCENTS.map((a) => a.hue), [188, 135, 40, 320, 265, 5]);
+test('the seven accents are distinct and the default exists', () => {
+  assert.deepEqual(ACCENTS.map((a) => a.id), ['cyan', 'green', 'amber', 'magenta', 'violet', 'red', 'grey']);
+  assert.deepEqual(ACCENTS.map((a) => a.hue), [188, 135, 40, 320, 265, 5, 0]);
   for (const a of ACCENTS) assert.ok(Number.isInteger(a.hue) && a.hue >= 0 && a.hue < 360, a.id);
-  const hues = ACCENTS.map((a) => a.hue).sort((x, y) => x - y);
+  const hues = ACCENTS.filter((a) => !a.mono).map((a) => a.hue).sort((x, y) => x - y);
   for (let i = 1; i < hues.length; i++) assert.ok(hues[i] - hues[i - 1] >= 20);
   assert.ok(ACCENTS.some((a) => a.id === DEFAULT_ACCENT));
   assert.equal(STORAGE_KEY, 'pulsar.accent');
@@ -23,6 +23,13 @@ test('deriveTheme gives every colour variable from one hue', () => {
   assert.equal(t['--line'], 'hsl(188, 53%, 26%)');
   assert.equal(t['--panel'], 'hsl(188, 36%, 8%)');
   assert.equal(t['--panel-hi'], 'hsl(188, 42%, 12%)');
+});
+
+test('the grey theme has no saturation', () => {
+  const t = deriveTheme(0, true);
+  assert.equal(t['--accent'], 'hsl(0, 0%, 68%)');
+  assert.equal(t['--bg'], 'hsl(0, 0%, 5%)');
+  assert.equal(t['--glow'], 'hsla(0, 0%, 68%, 0.35)');
 });
 
 test('loadAccent falls back to the default for anything unusable', () => {
