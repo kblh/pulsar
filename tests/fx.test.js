@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createDistortion, createChorus, chorusRightSwing, distortionCurve, distortionPreGain, distortionPostGain, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
+import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createDistortion, createChorus, createVibrato, chorusRightSwing, distortionCurve, distortionPreGain, distortionPostGain, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
 import { stubCtx } from './helpers/stub-ctx.js';
 import { markWorkletLoaded } from '../js/worklet.js';
 
@@ -221,7 +221,7 @@ test('bypass: a decay change while disabled leaves the muted return alone', () =
 });
 
 test('the registry lists every effect type with defaults, ranges and a factory', () => {
-  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq', 'chorus', 'distortion', 'bitcrusher']);
+  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq', 'chorus', 'vibrato', 'distortion', 'bitcrusher']);
   for (const type of FX_TYPES) {
     assert.deepEqual(Object.keys(FX_RANGES[type]).sort(), Object.keys(FX_DEFAULTS[type]).sort(), type);
     for (const [key, v] of Object.entries(FX_DEFAULTS[type])) {
@@ -543,4 +543,24 @@ test('chorus setParam moves everything by ramps, and disconnect stops the LFO', 
   assert.equal(fx.tailMs(), 100);
   fx.disconnect();
   assert.deepEqual(lfo.stops.length, 1);
+});
+
+test('vibrato: defaults, clamping and a graph of one modulated delay', () => {
+  const ctx = stubCtx();
+  assert.deepEqual(createVibrato(ctx).params, FX_DEFAULTS.vibrato);
+  assert.equal(clampFxParam('vibrato', 'rate', 99), 12);
+  assert.equal(clampFxParam('vibrato', 'rate', 0), 0.5);
+  assert.equal(clampFxParam('vibrato', 'depth', 2), 1);
+  assert.equal(clampFxParam('vibrato', 'width', 1), null);
+  assert.equal(ctx.nodes.filter((n) => n.kind === 'delay').length, 1);
+});
+
+test('vibrato setParam ramps, bypass mutes the return, disconnect stops the LFO', () => {
+  const fx = createVibrato(stubCtx());
+  fx.setParam('depth', 1);
+  fx.setParam('rate', 8);
+  assert.equal(fx.params.depth, 1);
+  fx.setEnabled(false);
+  assert.equal(fx.enabled, false);
+  assert.doesNotThrow(() => fx.disconnect());
 });

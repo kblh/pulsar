@@ -9,6 +9,7 @@ export const FX_DEFAULTS = {
   eq: { low: 0, mid: 0, high: 0, midFreq: 1000, return: 0.5 },
   distortion: { drive: 0.4, shape: 0.3, tone: 5000, return: 0.5 },
   chorus: { rate: 0.8, depth: 0.4, width: 1, return: 0.5 },
+  vibrato: { rate: 5, depth: 0.5, return: 0.5 },
   bitcrusher: { bits: 8, rate: 4, return: 0.5 },
 };
 
@@ -18,6 +19,7 @@ export const FX_RANGES = {
   eq: { low: [-12, 12], mid: [-12, 12], high: [-12, 12], midFreq: [200, 5000], return: [0, 1] },
   distortion: { drive: [0, 1], shape: [0, 1], tone: [500, 12000], return: [0, 1] },
   chorus: { rate: [0.05, 5], depth: [0, 1], width: [0, 1], return: [0, 1] },
+  vibrato: { rate: [0.5, 12], depth: [0, 1], return: [0, 1] },
   bitcrusher: { bits: [1, 16], rate: [1, 32], return: [0, 1] },
 };
 
@@ -387,6 +389,63 @@ export function createChorus(ctx, params) {
   };
 }
 
+const VIBRATO_BASE = 0.005; // seconds: the middle of the swing
+const VIBRATO_SWING = 0.004; // seconds: how far depth 1 moves the delay either way (never reaches zero)
+const VIBRATO_TAIL_MS = 100;
+
+/**
+ * Vibrato: a short delay whose time is moved by a sine LFO, so the pitch wobbles up and down. Each channel keeps its
+ * own signal (stereo stays stereo). Wet only: as a send it mixes the wobbling copy under the dry sound, so `return`
+ * near 1 and the module's dry level low give the classic effect.
+ */
+export function createVibrato(ctx, params) {
+  const p = accept('vibrato', params);
+  const input = ctx.createGain();
+  input.gain.value = 1;
+  const delay = ctx.createDelay(0.05);
+  delay.delayTime.value = VIBRATO_BASE;
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sine';
+  lfo.frequency.value = p.rate;
+  const swing = ctx.createGain();
+  swing.gain.value = p.depth * VIBRATO_SWING;
+  const ret = ctx.createGain();
+  ret.gain.value = p.return;
+  input.connect(delay);
+  lfo.connect(swing);
+  swing.connect(delay.delayTime);
+  delay.connect(ret);
+  lfo.start();
+
+  const ramp = (param, v) => param.setTargetAtTime(v, ctx.currentTime, RAMP);
+  let enabled = true;
+  return {
+    type: 'vibrato',
+    params: p,
+    input,
+    output: ret,
+    get enabled() { return enabled; },
+    setEnabled(on) {
+      enabled = Boolean(on);
+      ramp(ret.gain, enabled ? p.return : 0);
+    },
+    setParam(key, value) {
+      const v = clampFxParam('vibrato', key, value);
+      if (v === null) return;
+      p[key] = v;
+      if (key === 'rate') ramp(lfo.frequency, v);
+      else if (key === 'depth') ramp(swing.gain, v * VIBRATO_SWING);
+      else if (key === 'return' && enabled) ramp(ret.gain, v);
+    },
+    tailMs: () => VIBRATO_TAIL_MS,
+    dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, VIBRATO_TAIL_MS / 4000),
+    disconnect() {
+      lfo.stop();
+      for (const n of [input, delay, lfo, swing, ret]) n.disconnect();
+    },
+  };
+}
+
 const DIST_TAIL_MS = 100;
 const DIST_CURVE_POINTS = 2048;
 const DIST_MAX_DB = 36; // gain in front of the shaper at drive 1; a hotter signal only gets clamped by the curve ends
@@ -532,7 +591,7 @@ export function createBitcrusher(ctx, params) {
   };
 }
 
-const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq, chorus: createChorus, distortion: createDistortion, bitcrusher: createBitcrusher };
+const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq, chorus: createChorus, vibrato: createVibrato, distortion: createDistortion, bitcrusher: createBitcrusher };
 
 /** Every effect type the app knows, in menu order. Defaults, ranges and factories above are keyed by these. */
 export const FX_TYPES = Object.keys(MAKERS);
