@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createDistortion, createChorus, createVibrato, createTremolo, peekSeconds, tremoloCentre, tremoloSwing, chorusRightSwing, distortionCurve, distortionPreGain, distortionPostGain, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
+import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createDistortion, createChorus, createVibrato, createTremolo, vibratoSwing, vibratoBase, peekSeconds, tremoloCentre, tremoloSwing, chorusRightSwing, distortionCurve, distortionPreGain, distortionPostGain, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
 import { stubCtx } from './helpers/stub-ctx.js';
 import { markWorkletLoaded } from '../js/worklet.js';
 
@@ -623,5 +623,15 @@ test('without the worklet, vibrato and tremolo still build and the speed holds',
     const fx = make(ctx, { peek: 0.5 });
     fx.setParam('speed', 3);
     assert.doesNotThrow(() => fx.disconnect());
+  }
+});
+
+test('vibrato: speed changes only how fast the pitch wobbles, not how far (swing x speed stays constant)', () => {
+  const dev = (speed, depth) => vibratoSwing(speed, depth) * 2 * Math.PI * speed;
+  for (const sp of [1, 3, 8, 12]) assert.ok(Math.abs(dev(sp, 0.5) - 0.06) < 1e-9, `speed ${sp}`);
+  assert.ok(dev(8, 1) > dev(8, 0.5)); // depth still sets the depth
+  for (const sp of [0.5, 5, 12]) for (const d of [0, 0.5, 1]) {
+    assert.ok(vibratoBase(sp, d) - vibratoSwing(sp, d) > 0, 'never reaches zero delay');
+    assert.ok(vibratoBase(sp, d) + vibratoSwing(sp, d) <= 0.05 + 1e-9, 'fits the delay line');
   }
 });

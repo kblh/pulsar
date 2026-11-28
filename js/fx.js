@@ -431,8 +431,18 @@ function createSpeedSlide(ctx, input, lfo, p) {
   };
 }
 
-const VIBRATO_BASE = 0.005; // seconds: the middle of the swing
-const VIBRATO_SWING = 0.004; // seconds: how far depth 1 moves the delay either way (never reaches zero)
+const VIBRATO_PITCH = 0.12; // the pitch deviation at depth 1, as a ratio either way (about two semitones)
+const VIBRATO_MARGIN = 0.002; // seconds the delay never gets below
+const VIBRATO_MAX_SWING = (0.05 - VIBRATO_MARGIN) / 2; // seconds: base + swing must fit the 0.05 s delay line (only a slow, deep setting is held back by it)
+
+/**
+ * How far (seconds) the delay moves either way. A delay moved by a sine of frequency f bends the pitch by
+ * swing * 2 * pi * f, so the swing is the wanted deviation divided by 2 * pi * speed: then `speed` changes only how fast
+ * the pitch wobbles, not how far.
+ */
+export const vibratoSwing = (speed, depth) => Math.min(VIBRATO_MAX_SWING, (depth * VIBRATO_PITCH) / (2 * Math.PI * speed));
+/** The middle of the swing: far enough from zero that the delay time never gets there. */
+export const vibratoBase = (speed, depth) => vibratoSwing(speed, depth) + VIBRATO_MARGIN;
 const VIBRATO_TAIL_MS = 100;
 
 /**
@@ -445,11 +455,11 @@ export function createVibrato(ctx, params) {
   const input = ctx.createGain();
   input.gain.value = 1;
   const delay = ctx.createDelay(0.05);
-  delay.delayTime.value = VIBRATO_BASE;
+  delay.delayTime.value = vibratoBase(p.speed, p.depth);
   const lfo = ctx.createOscillator();
   lfo.type = 'sine';
   const swing = ctx.createGain();
-  swing.gain.value = p.depth * VIBRATO_SWING;
+  swing.gain.value = vibratoSwing(p.speed, p.depth);
   const ret = ctx.createGain();
   ret.gain.value = p.return;
   input.connect(delay);
@@ -476,8 +486,10 @@ export function createVibrato(ctx, params) {
       if (v === null) return;
       p[key] = v;
       if (key === 'speed' || key === 'peek') slide.apply();
-      else if (key === 'depth') ramp(swing.gain, v * VIBRATO_SWING);
-      else if (key === 'return' && enabled) ramp(ret.gain, v);
+      if (key === 'speed' || key === 'depth') {
+        ramp(swing.gain, vibratoSwing(p.speed, p.depth));
+        ramp(delay.delayTime, vibratoBase(p.speed, p.depth));
+      } else if (key === 'return' && enabled) ramp(ret.gain, v);
     },
     tailMs: () => VIBRATO_TAIL_MS,
     dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, VIBRATO_TAIL_MS / 4000),

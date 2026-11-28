@@ -76,3 +76,12 @@ test('tremolo fields: rate in Hz on a log scale, depth and return in percent', (
   assert.equal(f.depth.format(0.6), '60%');
   assert.equal(FX_LABELS.tremolo, 'tremolo');
 });
+
+test('speed shows Hz, and below 1 Hz also the length of a cycle', () => {
+  for (const type of ['vibrato', 'tremolo']) {
+    const f = FX_FIELDS[type].find((x) => x.key === 'speed');
+    assert.equal(f.format(5), '5.0 Hz');
+    assert.equal(f.format(1), '1.0 Hz');
+    assert.equal(f.format(0.5), '0.5 Hz \u00b7 2.0 s');
+  }
+});

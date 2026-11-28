@@ -1,5 +1,7 @@
 // How each effect's parameters are shown: one slider per field. Pure data, no DOM.
 const pct = (v) => `${Math.round(v * 100)}%`;
+/** A speed in Hz; below 1 Hz the length of one cycle follows, which is how a slow wobble is felt. */
+export const speedHz = (v) => (v < 1 ? `${v.toFixed(1)} Hz \u00b7 ${(1 / v).toFixed(1)} s` : `${v.toFixed(1)} Hz`);
 const db = (v) => (v === 0 ? '0 dB' : `${v > 0 ? '+' : '\u2212'}${Math.abs(v)} dB`);
 
 export const FX_FIELDS = {
@@ -30,13 +32,13 @@ export const FX_FIELDS = {
     { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
   ],
   vibrato: [
-    { key: 'speed', min: 0.5, max: 12, step: 0.1, scale: 'log', format: (v) => `${v.toFixed(1)} Hz` },
+    { key: 'speed', min: 0.5, max: 12, step: 0.1, scale: 'log', format: speedHz },
     { key: 'peek', min: 0, max: 1, step: 0.05, format: pct },
     { key: 'depth', min: 0, max: 1, step: 0.05, format: pct },
     { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
   ],
   tremolo: [
-    { key: 'speed', min: 0.5, max: 20, step: 0.1, scale: 'log', format: (v) => `${v.toFixed(1)} Hz` },
+    { key: 'speed', min: 0.5, max: 20, step: 0.1, scale: 'log', format: speedHz },
     { key: 'peek', min: 0, max: 1, step: 0.05, format: pct },
     { key: 'depth', min: 0, max: 1, step: 0.05, format: pct },
     { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
