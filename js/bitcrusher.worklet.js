@@ -1,4 +1,5 @@
 import { createCrusher } from './crush.js';
+import { createSlide } from './slide.js';
 
 /** Runs on the audio thread: every channel gets its own crusher, so left and right stay apart. */
 class PulsarBitcrusher extends AudioWorkletProcessor {
@@ -39,3 +40,33 @@ class PulsarBitcrusher extends AudioWorkletProcessor {
 }
 
 registerProcessor('pulsar-bitcrusher', PulsarBitcrusher);
+
+/** The tremolo's and vibrato's peek: input in, one channel out holding the LFO frequency in Hz (it feeds the LFO's frequency). */
+class PulsarSlide extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [
+      { name: 'speed', defaultValue: 4, minValue: 0.5, maxValue: 20, automationRate: 'k-rate' },
+      { name: 'peek', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
+    ];
+  }
+
+  constructor() {
+    super();
+    this.slide = createSlide({ sampleRate });
+    this.alive = true;
+    this.port.onmessage = (e) => {
+      if (e.data === 'stop') this.alive = false;
+    };
+  }
+
+  process(inputs, outputs, parameters) {
+    const src = inputs[0][0];
+    const dst = outputs[0][0];
+    const speed = parameters.speed[0];
+    const peek = parameters.peek[0];
+    for (let i = 0; i < dst.length; i++) dst[i] = this.slide.process(src ? src[i] : 0, speed, peek);
+    return this.alive;
+  }
+}
+
+registerProcessor('pulsar-slide', PulsarSlide);

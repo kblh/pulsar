@@ -61,8 +61,18 @@ test('chorus fields: rate in Hz on a log scale, the rest in percent', () => {
 
 test('vibrato fields: rate in Hz on a log scale, depth and return in percent', () => {
   const f = Object.fromEntries(FX_FIELDS.vibrato.map((x) => [x.key, x]));
-  assert.equal(f.rate.format(5), '5.0 Hz');
-  assert.equal(f.rate.scale, 'log');
+  assert.equal(f.speed.format(5), '5.0 Hz');
+  assert.equal(f.peek.format(0.5), '50%');
+  assert.equal(f.speed.scale, 'log');
   assert.equal(f.depth.format(0.5), '50%');
   assert.equal(FX_LABELS.vibrato, 'vibrato');
+});
+
+test('tremolo fields: rate in Hz on a log scale, depth and return in percent', () => {
+  const f = Object.fromEntries(FX_FIELDS.tremolo.map((x) => [x.key, x]));
+  assert.equal(f.speed.format(4), '4.0 Hz');
+  assert.equal(f.peek.format(0.5), '50%');
+  assert.equal(f.speed.scale, 'log');
+  assert.equal(f.depth.format(0.6), '60%');
+  assert.equal(FX_LABELS.tremolo, 'tremolo');
 });

@@ -1,4 +1,5 @@
 import { hasWorklet } from './worklet.js';
+import { peekSeconds } from './slide.js';
 
 const RAMP = 0.02; // seconds; parameter changes never jump
 const MAX_TAIL_MS = 20000;
@@ -9,7 +10,8 @@ export const FX_DEFAULTS = {
   eq: { low: 0, mid: 0, high: 0, midFreq: 1000, return: 0.5 },
   distortion: { drive: 0.4, shape: 0.3, tone: 5000, return: 0.5 },
   chorus: { rate: 0.8, depth: 0.4, width: 1, return: 0.5 },
-  vibrato: { rate: 5, depth: 0.5, return: 0.5 },
+  vibrato: { speed: 5, peek: 0, depth: 0.5, return: 0.5 },
+  tremolo: { speed: 4, peek: 0, depth: 0.6, return: 0.5 },
   bitcrusher: { bits: 8, rate: 4, return: 0.5 },
 };
 
@@ -19,7 +21,8 @@ export const FX_RANGES = {
   eq: { low: [-12, 12], mid: [-12, 12], high: [-12, 12], midFreq: [200, 5000], return: [0, 1] },
   distortion: { drive: [0, 1], shape: [0, 1], tone: [500, 12000], return: [0, 1] },
   chorus: { rate: [0.05, 5], depth: [0, 1], width: [0, 1], return: [0, 1] },
-  vibrato: { rate: [0.5, 12], depth: [0, 1], return: [0, 1] },
+  vibrato: { speed: [0.5, 12], peek: [0, 1], depth: [0, 1], return: [0, 1] },
+  tremolo: { speed: [0.5, 20], peek: [0, 1], depth: [0, 1], return: [0, 1] },
   bitcrusher: { bits: [1, 16], rate: [1, 32], return: [0, 1] },
 };
 
@@ -389,6 +392,45 @@ export function createChorus(ctx, params) {
   };
 }
 
+export { peekSeconds };
+
+/**
+ * `peek`: after a note starts the speed falls from the set value to 0 in `peekSeconds`, and stays there until the next
+ * note (see slide.js). It needs the worklet; without it the speed simply holds. The worklet's output is the LFO's
+ * frequency, so the LFO's own value is 0. Returns the `speed`/`peek` applier and the nodes to disconnect.
+ */
+function createSpeedSlide(ctx, input, lfo, p) {
+  const hold = () => {
+    lfo.frequency.value = p.speed;
+    return { apply: () => lfo.frequency.setTargetAtTime(p.speed, ctx.currentTime, RAMP), stop() {}, nodes: [] };
+  };
+  if (!hasWorklet(ctx)) return hold();
+  let node;
+  try {
+    node = new AudioWorkletNode(ctx, 'pulsar-slide', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+      channelCount: 1,
+      channelCountMode: 'explicit',
+      channelInterpretation: 'speakers', // a stereo input is mixed down
+      parameterData: { speed: p.speed, peek: p.peek },
+    });
+  } catch {
+    return hold(); // an older cached worklet module without this processor: the effect still works, only `peek` does not
+  }
+  lfo.frequency.value = 0;
+  input.connect(node);
+  node.connect(lfo.frequency);
+  return {
+    apply() {
+      for (const k of ['speed', 'peek']) node.parameters.get(k).setTargetAtTime(p[k], ctx.currentTime, RAMP);
+    },
+    stop: () => node.port.postMessage('stop'),
+    nodes: [node],
+  };
+}
+
 const VIBRATO_BASE = 0.005; // seconds: the middle of the swing
 const VIBRATO_SWING = 0.004; // seconds: how far depth 1 moves the delay either way (never reaches zero)
 const VIBRATO_TAIL_MS = 100;
@@ -406,7 +448,6 @@ export function createVibrato(ctx, params) {
   delay.delayTime.value = VIBRATO_BASE;
   const lfo = ctx.createOscillator();
   lfo.type = 'sine';
-  lfo.frequency.value = p.rate;
   const swing = ctx.createGain();
   swing.gain.value = p.depth * VIBRATO_SWING;
   const ret = ctx.createGain();
@@ -415,6 +456,7 @@ export function createVibrato(ctx, params) {
   lfo.connect(swing);
   swing.connect(delay.delayTime);
   delay.connect(ret);
+  const slide = createSpeedSlide(ctx, input, lfo, p);
   lfo.start();
 
   const ramp = (param, v) => param.setTargetAtTime(v, ctx.currentTime, RAMP);
@@ -433,7 +475,7 @@ export function createVibrato(ctx, params) {
       const v = clampFxParam('vibrato', key, value);
       if (v === null) return;
       p[key] = v;
-      if (key === 'rate') ramp(lfo.frequency, v);
+      if (key === 'speed' || key === 'peek') slide.apply();
       else if (key === 'depth') ramp(swing.gain, v * VIBRATO_SWING);
       else if (key === 'return' && enabled) ramp(ret.gain, v);
     },
@@ -441,7 +483,69 @@ export function createVibrato(ctx, params) {
     dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, VIBRATO_TAIL_MS / 4000),
     disconnect() {
       lfo.stop();
-      for (const n of [input, delay, lfo, swing, ret]) n.disconnect();
+      slide.stop();
+      for (const n of [input, delay, lfo, swing, ret, ...slide.nodes]) n.disconnect();
+    },
+  };
+}
+
+const TREMOLO_TAIL_MS = 100;
+
+/** The gain a tremolo swings around, and how far either way: depth 0 holds 1, depth 1 swings between 0 and 1. */
+export const tremoloCentre = (depth) => 1 - depth / 2;
+export const tremoloSwing = (depth) => depth / 2;
+
+/**
+ * Tremolo: the level is moved by a sine LFO (amplitude modulation). The LFO adds to the gain's own value, so the gain
+ * stays between 0 and 1 and never inverts the signal. Both channels share one LFO. Wet only, like the other send effects.
+ */
+export function createTremolo(ctx, params) {
+  const p = accept('tremolo', params);
+  const input = ctx.createGain();
+  input.gain.value = 1;
+  const amp = ctx.createGain();
+  amp.gain.value = tremoloCentre(p.depth);
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sine';
+  const swing = ctx.createGain();
+  swing.gain.value = tremoloSwing(p.depth);
+  const ret = ctx.createGain();
+  ret.gain.value = p.return;
+  input.connect(amp);
+  lfo.connect(swing);
+  swing.connect(amp.gain);
+  amp.connect(ret);
+  const slide = createSpeedSlide(ctx, input, lfo, p);
+  lfo.start();
+
+  const ramp = (param, v) => param.setTargetAtTime(v, ctx.currentTime, RAMP);
+  let enabled = true;
+  return {
+    type: 'tremolo',
+    params: p,
+    input,
+    output: ret,
+    get enabled() { return enabled; },
+    setEnabled(on) {
+      enabled = Boolean(on);
+      ramp(ret.gain, enabled ? p.return : 0);
+    },
+    setParam(key, value) {
+      const v = clampFxParam('tremolo', key, value);
+      if (v === null) return;
+      p[key] = v;
+      if (key === 'speed' || key === 'peek') slide.apply();
+      else if (key === 'depth') {
+        ramp(amp.gain, tremoloCentre(v));
+        ramp(swing.gain, tremoloSwing(v));
+      } else if (key === 'return' && enabled) ramp(ret.gain, v);
+    },
+    tailMs: () => TREMOLO_TAIL_MS,
+    dispose: () => ret.gain.setTargetAtTime(0, ctx.currentTime, TREMOLO_TAIL_MS / 4000),
+    disconnect() {
+      lfo.stop();
+      slide.stop();
+      for (const n of [input, amp, lfo, swing, ret, ...slide.nodes]) n.disconnect();
     },
   };
 }
@@ -591,7 +695,7 @@ export function createBitcrusher(ctx, params) {
   };
 }
 
-const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq, chorus: createChorus, vibrato: createVibrato, distortion: createDistortion, bitcrusher: createBitcrusher };
+const MAKERS = { delay: createDelay, reverb: createReverb, eq: createEq, chorus: createChorus, vibrato: createVibrato, tremolo: createTremolo, distortion: createDistortion, bitcrusher: createBitcrusher };
 
 /** Every effect type the app knows, in menu order. Defaults, ranges and factories above are keyed by these. */
 export const FX_TYPES = Object.keys(MAKERS);

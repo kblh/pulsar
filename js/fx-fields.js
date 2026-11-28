@@ -30,7 +30,14 @@ export const FX_FIELDS = {
     { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
   ],
   vibrato: [
-    { key: 'rate', min: 0.5, max: 12, step: 0.1, scale: 'log', format: (v) => `${v.toFixed(1)} Hz` },
+    { key: 'speed', min: 0.5, max: 12, step: 0.1, scale: 'log', format: (v) => `${v.toFixed(1)} Hz` },
+    { key: 'peek', min: 0, max: 1, step: 0.05, format: pct },
+    { key: 'depth', min: 0, max: 1, step: 0.05, format: pct },
+    { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
+  ],
+  tremolo: [
+    { key: 'speed', min: 0.5, max: 20, step: 0.1, scale: 'log', format: (v) => `${v.toFixed(1)} Hz` },
+    { key: 'peek', min: 0, max: 1, step: 0.05, format: pct },
     { key: 'depth', min: 0, max: 1, step: 0.05, format: pct },
     { key: 'return', min: 0, max: 1, step: 0.05, format: pct },
   ],
@@ -48,7 +55,7 @@ export const FX_FIELDS = {
 };
 
 /** The text of the add-menu button. */
-export const FX_LABELS = { delay: 'delay', reverb: 'reverb', eq: 'eq', chorus: 'chorus', vibrato: 'vibrato', distortion: 'drive', bitcrusher: 'crusher' };
+export const FX_LABELS = { delay: 'delay', reverb: 'reverb', eq: 'eq', chorus: 'chorus', vibrato: 'vibrato', tremolo: 'tremolo', distortion: 'drive', bitcrusher: 'crusher' };
 
 /** How each effect is named on its pedal. */
 export const FX_PEDALS = {
@@ -57,6 +64,7 @@ export const FX_PEDALS = {
   eq: { title: 'EQ' },
   chorus: { title: 'CHORUS' },
   vibrato: { title: 'VIBRATO' },
+  tremolo: { title: 'TREMOLO' },
   distortion: { title: 'DRIVE' },
   bitcrusher: { title: 'CRUSHER' },
 };

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createDistortion, createChorus, createVibrato, chorusRightSwing, distortionCurve, distortionPreGain, distortionPostGain, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
+import { FX_DEFAULTS, FX_RANGES, FX_TYPES, createEffect, clampFxParam, delayLoopGain, reverbCombFeedback, reverbDampHz, createDelay, createReverb, createEq, createDistortion, createChorus, createVibrato, createTremolo, peekSeconds, tremoloCentre, tremoloSwing, chorusRightSwing, distortionCurve, distortionPreGain, distortionPostGain, createBitcrusher, FX_NEEDS_WORKLET } from '../js/fx.js';
 import { stubCtx } from './helpers/stub-ctx.js';
 import { markWorkletLoaded } from '../js/worklet.js';
 
@@ -14,7 +14,7 @@ class FakeWorkletNode {
     this.disconnected = 0;
     this.messages = [];
     const param = () => { const calls = []; return { calls, setTargetAtTime: (...a) => calls.push(['target', ...a]), set value(v) { calls.push(['value', v]); } }; };
-    this.parameters = new Map([['bits', param()], ['rate', param()]]);
+    this.parameters = new Map([['bits', param()], ['rate', param()], ['speed', param()], ['peek', param()]]);
     this.port = { postMessage: (m) => this.messages.push(m) };
     workletNodes.push(this);
   }
@@ -221,7 +221,7 @@ test('bypass: a decay change while disabled leaves the muted return alone', () =
 });
 
 test('the registry lists every effect type with defaults, ranges and a factory', () => {
-  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq', 'chorus', 'vibrato', 'distortion', 'bitcrusher']);
+  assert.deepEqual(FX_TYPES, ['delay', 'reverb', 'eq', 'chorus', 'vibrato', 'tremolo', 'distortion', 'bitcrusher']);
   for (const type of FX_TYPES) {
     assert.deepEqual(Object.keys(FX_RANGES[type]).sort(), Object.keys(FX_DEFAULTS[type]).sort(), type);
     for (const [key, v] of Object.entries(FX_DEFAULTS[type])) {
@@ -548,8 +548,8 @@ test('chorus setParam moves everything by ramps, and disconnect stops the LFO', 
 test('vibrato: defaults, clamping and a graph of one modulated delay', () => {
   const ctx = stubCtx();
   assert.deepEqual(createVibrato(ctx).params, FX_DEFAULTS.vibrato);
-  assert.equal(clampFxParam('vibrato', 'rate', 99), 12);
-  assert.equal(clampFxParam('vibrato', 'rate', 0), 0.5);
+  assert.equal(clampFxParam('vibrato', 'speed', 99), 12);
+  assert.equal(clampFxParam('vibrato', 'speed', 0), 0.5);
   assert.equal(clampFxParam('vibrato', 'depth', 2), 1);
   assert.equal(clampFxParam('vibrato', 'width', 1), null);
   assert.equal(ctx.nodes.filter((n) => n.kind === 'delay').length, 1);
@@ -558,9 +558,70 @@ test('vibrato: defaults, clamping and a graph of one modulated delay', () => {
 test('vibrato setParam ramps, bypass mutes the return, disconnect stops the LFO', () => {
   const fx = createVibrato(stubCtx());
   fx.setParam('depth', 1);
-  fx.setParam('rate', 8);
+  fx.setParam('speed', 8);
   assert.equal(fx.params.depth, 1);
   fx.setEnabled(false);
   assert.equal(fx.enabled, false);
   assert.doesNotThrow(() => fx.disconnect());
+});
+
+test('tremolo: defaults, clamping, and the gain stays within 0..1 at every depth', () => {
+  assert.deepEqual(createTremolo(stubCtx()).params, FX_DEFAULTS.tremolo);
+  assert.equal(clampFxParam('tremolo', 'speed', 99), 20);
+  assert.equal(clampFxParam('tremolo', 'depth', 2), 1);
+  assert.equal(clampFxParam('tremolo', 'width', 1), null);
+  for (const d of [0, 0.3, 1]) {
+    assert.ok(tremoloCentre(d) + tremoloSwing(d) <= 1 + 1e-9);
+    assert.ok(tremoloCentre(d) - tremoloSwing(d) >= -1e-9);
+  }
+  assert.equal(tremoloCentre(0), 1);
+  assert.equal(tremoloSwing(0), 0);
+});
+
+test('tremolo setParam ramps, bypass mutes the return, disconnect stops the LFO', () => {
+  const fx = createTremolo(stubCtx());
+  fx.setParam('depth', 1);
+  fx.setParam('speed', 10);
+  assert.equal(fx.params.depth, 1);
+  fx.setEnabled(false);
+  assert.equal(fx.enabled, false);
+  assert.doesNotThrow(() => fx.disconnect());
+});
+
+test('peek: 50 % falls to 0 in 5 s, 80 % in 3 s, higher is faster', () => {
+  assert.ok(Math.abs(peekSeconds(0.5) - 5) < 1e-9);
+  assert.ok(Math.abs(peekSeconds(0.8) - 3) < 1e-9);
+  assert.ok(peekSeconds(1) < peekSeconds(0.8) && peekSeconds(0.8) < peekSeconds(0.5) && peekSeconds(0.5) < peekSeconds(0.05));
+  for (const type of ['vibrato', 'tremolo']) {
+    assert.equal(clampFxParam(type, 'peek', 3), 1);
+    assert.equal(clampFxParam(type, 'rate', 1), null);
+    assert.equal(FX_DEFAULTS[type].peek, 0);
+  }
+});
+
+test('peek on vibrato and tremolo: input -> slide worklet -> LFO frequency; setParam and disconnect work', () => {
+  for (const make of [createVibrato, createTremolo]) {
+    const ctx = workletCtx();
+    const before = workletNodes.length;
+    const fx = make(ctx, { speed: 6, peek: 0.5 });
+    const node = workletNodes[before];
+    assert.equal(node.name, 'pulsar-slide');
+    assert.deepEqual(node.options.parameterData, { speed: 6, peek: 0.5 });
+    assert.ok(fx.input.connections.includes(node));
+    fx.setParam('peek', 1);
+    fx.setParam('speed', 3);
+    assert.deepEqual(node.parameters.get('peek').calls.at(-1).slice(0, 2), ['target', 1]);
+    assert.deepEqual(node.parameters.get('speed').calls.at(-1).slice(0, 2), ['target', 3]);
+    fx.disconnect();
+    assert.deepEqual(node.messages, ['stop']);
+  }
+});
+
+test('without the worklet, vibrato and tremolo still build and the speed holds', () => {
+  for (const make of [createVibrato, createTremolo]) {
+    const ctx = stubCtx();
+    const fx = make(ctx, { peek: 0.5 });
+    fx.setParam('speed', 3);
+    assert.doesNotThrow(() => fx.disconnect());
+  }
 });
